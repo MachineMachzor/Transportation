@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Roomba</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-4Q6Gf2aSP4eDXB8Miphtr37CMZZQ5oXLH2yaXMJ2w8e2ZtHTl7GptT4jmndRuHDT"
+      crossorigin="anonymous"
+    />
+    <style>
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        /* background: #181818; */
+        background: rgb(123, 123, 123);
+        color: #efefef;
+        font-size: 16px;
+      }
+
+      h2 {
+        font-size: 18px;
+      }
+
+      section.main {
+        display: flex;
+      }
+
+      .menu,
+      section.main {
+        flex-direction: column;
+      }
+
+      .menu {
+        /* display: none; */
+        display: inline-block;
+        text-align: left;
+        flex-wrap: nowrap;
+        min-width: 400px;
+        /* background: #363636; */
+        background: rgb(65, 65, 65);
+        padding: 8px;
+        border-radius: 4px;
+        margin-top: -10px;
+        margin-right: 10px;
+      }
+
+      #content {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        align-items: stretch;
+      }
+
+      figure {
+        padding: 0px;
+        margin: 0;
+        -webkit-margin-before: 0;
+        margin-block-start: 0;
+        -webkit-margin-after: 0;
+        margin-block-end: 0;
+        -webkit-margin-start: 0;
+        margin-inline-start: 0;
+        -webkit-margin-end: 0;
+        margin-inline-end: 0;
+      }
+
+      figure img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border-radius: 4px;
+        margin-top: 8px;
+      }
+
+      @media (min-width: 800px) and (orientation: landscape) {
+        #content {
+          display: flex;
+          flex-wrap: nowrap;
+          align-items: stretch;
+        }
+
+        figure img {
+          display: block;
+          max-width: 100%;
+          max-height: calc(100vh - 40px);
+          width: auto;
+          height: auto;
+        }
+
+        figure {
+          padding: 0 0 0 0px;
+          margin: 0;
+          -webkit-margin-before: 0;
+          margin-block-start: 0;
+          -webkit-margin-after: 0;
+          margin-block-end: 0;
+          -webkit-margin-start: 0;
+          margin-inline-start: 0;
+          -webkit-margin-end: 0;
+          margin-inline-end: 0;
+        }
+      }
+
+      section#buttons {
+        display: flex;
+        flex-wrap: nowrap;
+        justify-content: space-between;
+      }
+
+      #nav-toggle {
+        cursor: pointer;
+        display: block;
+      }
+
+      #nav-toggle-cb {
+        outline: 0;
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      #nav-toggle-cb:checked + .menu {
+        display: flex;
+      }
+
+      .input-group {
+        display: flex;
+        flex-wrap: nowrap;
+        line-height: 22px;
+        margin: 5px 0;
+      }
+
+      .input-group > label {
+        display: inline-block;
+        padding-right: 10px;
+        min-width: 47%;
+      }
+
+      .input-group input,
+      .input-group select {
+        flex-grow: 1;
+      }
+
+      .range-max,
+      .range-min {
+        display: inline-block;
+        padding: 0 5px;
+      }
+
+      button,
+      .button {
+        display: block;
+        margin: 5px;
+        padding: 0 12px;
+        border: 0;
+        line-height: 28px;
+        cursor: pointer;
+        color: #fff;
+        background: #ff3034;
+        border-radius: 5px;
+        font-size: 16px;
+        outline: 0;
+      }
+
+      .save {
+        position: absolute;
+        right: 25px;
+        top: 0px;
+        height: 16px;
+        line-height: 16px;
+        padding: 0 4px;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      /* Slider + value display */
+      .slider-container {
+        position: relative;
+        text-align: center;
+        margin: 0.5em 0;
+      }
+      .slider-value {
+        position: absolute;
+        top: -1.2em;
+        left: 50%;
+        transform: translateX(-50%);
+        font-weight: bold;
+        font-size: 18px;
+      }
+      #led_intensity {
+        width: 100%;
+      }
+
+      /* Direction buttons */
+      .control-group {
+        margin-top: 1.5em;
+      }
+      .control-item {
+        display: flex;
+        align-items: center;
+        margin: 0.5em 0;
+      }
+      .control-item label {
+        flex: 1;
+      }
+      .toggle-btn {
+        width: 50px;
+        padding: 0.3em;
+        border: none;
+        color: white;
+        cursor: pointer;
+      }
+      .toggle-btn.on {
+        background: green;
+      }
+      .toggle-btn.off {
+        background: red;
+      }
+
+      button:hover {
+        background: #ff494d;
+      }
+
+      button:active {
+        background: #f21c21;
+      }
+
+      button.disabled {
+        cursor: default;
+        background: #a0a0a0;
+      }
+
+      input[type="range"] {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 22px;
+        background: #363636;
+        cursor: pointer;
+        margin: 0;
+      }
+
+      input[type="range"]:focus {
+        outline: 0;
+      }
+
+      input[type="range"]::-webkit-slider-runnable-track {
+        width: 100%;
+        height: 2px;
+        cursor: pointer;
+        background: #efefef;
+        border-radius: 0;
+        border: 0 solid #efefef;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        border: 1px solid rgba(0, 0, 30, 0);
+        height: 22px;
+        width: 22px;
+        border-radius: 50px;
+        background: #ff3034;
+        cursor: pointer;
+        -webkit-appearance: none;
+        margin-top: -11.5px;
+      }
+
+      input[type="range"]:focus::-webkit-slider-runnable-track {
+        background: #efefef;
+      }
+
+      input[type="range"]::-moz-range-track {
+        width: 100%;
+        height: 2px;
+        cursor: pointer;
+        background: #efefef;
+        border-radius: 0;
+        border: 0 solid #efefef;
+      }
+
+      input[type="range"]::-moz-range-thumb {
+        border: 1px solid rgba(0, 0, 30, 0);
+        height: 22px;
+        width: 22px;
+        border-radius: 50px;
+        background: #ff3034;
+        cursor: pointer;
+      }
+
+      input[type="range"]::-ms-track {
+        width: 100%;
+        height: 10px;
+        cursor: pointer;
+        background: 0 0;
+        border-color: transparent;
+        color: transparent;
+      }
+
+      input[type="range"]::-ms-fill-lower {
+        background: #efefef;
+        border: 0 solid #efefef;
+        border-radius: 0;
+      }
+
+      input[type="range"]::-ms-fill-upper {
+        background: #efefef;
+        border: 0 solid #efefef;
+        border-radius: 0;
+      }
+
+      input[type="range"]::-ms-thumb {
+        border: 1px solid rgba(0, 0, 30, 0);
+        height: 22px;
+        width: 22px;
+        border-radius: 50px;
+        background: #ff3034;
+        cursor: pointer;
+        height: 2px;
+      }
+
+      input[type="range"]:focus::-ms-fill-lower {
+        background: #efefef;
+      }
+
+      input[type="range"]:focus::-ms-fill-upper {
+        background: #363636;
+      }
+
+      .switch {
+        display: block;
+        position: relative;
+        line-height: 22px;
+        font-size: 16px;
+        height: 22px;
+      }
+
+      .switch input {
+        outline: 0;
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .slider {
+        width: 50px;
+        height: 22px;
+        border-radius: 22px;
+        cursor: pointer;
+        background-color: grey;
+      }
+      .page-header {
+        text-align: center;
+        padding: 1em 0; /* “normal” top & bottom padding */
+        margin-bottom: 1em;
+      }
+      .page-header h1 {
+        margin: 0;
+        font-size: 1.8em;
+      }
+
+      .slider,
+      .slider:before {
+        display: inline-block;
+        transition: 0.4s;
+      }
+
+      .slider:before {
+        position: relative;
+        content: "";
+        border-radius: 50%;
+        height: 16px;
+        width: 16px;
+        left: 4px;
+        top: 3px;
+        background-color: #fff;
+      }
+
+      input:checked + .slider {
+        background-color: #ff3034;
+      }
+
+      input:checked + .slider:before {
+        -webkit-transform: translateX(26px);
+        transform: translateX(26px);
+      }
+
+      select {
+        border: 1px solid #363636;
+        font-size: 14px;
+        height: 22px;
+        outline: 0;
+        border-radius: 5px;
+      }
+
+      .image-container {
+        position: relative;
+        min-width: 160px;
+      }
+
+      .close {
+        position: absolute;
+        right: 5px;
+        top: 5px;
+        background: #ff3034;
+        width: 16px;
+        height: 16px;
+        border-radius: 100px;
+        color: #fff;
+        text-align: center;
+        line-height: 18px;
+        cursor: pointer;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      input[type="text"] {
+        border: 1px solid #363636;
+        font-size: 14px;
+        height: 20px;
+        margin: 1px;
+        outline: 0;
+        border-radius: 5px;
+      }
+
+      .inline-button {
+        line-height: 20px;
+        margin: 2px;
+        padding: 1px 4px 2px 4px;
+      }
+
+      label.toggle-section-label {
+        cursor: pointer;
+        display: block;
+      }
+
+      input.toggle-section-button {
+        outline: 0;
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      input.toggle-section-button:checked + section.toggle-section {
+        display: none;
+      }
+
+      /* 1) Widen & thicken the track, round its corners */
+      input[type="range"].form-range {
+        height: 2rem; /* a chunkier bar */
+        border-radius: 0.5rem; /* pill shape */
+        background: #444; /* fallback */
+        transition: background 0.2s ease-out;
+      }
+
+      /* 2) Style the thumb */
+      input[type="range"].form-range::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 1.25rem;
+        height: 1.25rem;
+        border-radius: 50%;
+        background: #fff;
+        border: 2px solid #666;
+        margin-top: -0.5rem; /* to vertically center on the track */
+      }
+      input[type="range"].form-range::-moz-range-thumb {
+        width: 1.25rem;
+        height: 1.25rem;
+        border-radius: 50%;
+        background: #fff;
+        border: 2px solid #666;
+      }
+
+      /* 3) Remove default focus outline and add your own */
+      input[type="range"].form-range:focus {
+        outline: none;
+      }
+      input[type="range"].form-range:focus::-webkit-slider-thumb {
+        box-shadow: 0 0 0 0.15rem rgba(255, 255, 255, 0.5);
+      }
+      input[type="range"].form-range:focus::-moz-range-thumb {
+        box-shadow: 0 0 0 0.15rem rgba(255, 255, 255, 0.5);
+      }
+
+      #led-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      #speed-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+      #logConsole {
+        width: 80%;
+        max-height: 300px;
+        margin: 20px auto;
+        padding: 15px;
+        border-radius: 8px;
+        background-color: #1e1e1e;
+        color: #dcdcdc;
+        font-family: "Courier New", monospace;
+        font-size: 14px;
+        white-space: pre-wrap;
+        overflow-y: auto;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+        border: 1px solid #333;
+      }
+
+      #logConsole::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      #logConsole::-webkit-scrollbar-thumb {
+        background-color: #555;
+        border-radius: 4px;
+      }
+
+      #logConsole::-webkit-scrollbar-track {
+        background: #2a2a2a;
+      }
+    </style>
+  </head>
+  <header class="bg-dark text-white text-center py-3 mb-3">
+    <h1>Roomba Controller</h1>
+  </header>
+  <body>
+    <section class="main">
+      <!-- <div id="logo">
+        <label for="nav-toggle-cb" id="nav-toggle"
+          >&#9776;&nbsp;&nbsp;Toggle OV2640 settings</label
+        >
+      </div> -->
+      <nav class="menu">
+        <h4 class="text-white text-center">Reset ESP32Cam</h4>
+        <br />
+
+        <!-- small screens you get 2 columns, and on ≥md screens you get 4.   -->
+        <div class="row row-cols-2 row-cols-md-1 g-3 mb-5">
+          <div class="control-item col d-flex flex-column">
+            <button
+              id="reset"
+              class="toggle-btn off"
+              style="width: fit-content"
+            >
+              YES
+            </button>
+          </div>
+        </div>
+      </nav>
+      <div id="content">
+        <div id="sidebar">
+          <input type="checkbox" id="nav-toggle-cb" checked="checked" />
+          <nav class="menu">
+            <h4 class="text-white text-center mb-3">LED Intensity</h4>
+            <div class="input-group" id="led-group">
+              <!-- <label for="led_intensity">LED Intensity</label> -->
+
+              <div class="slider-container">
+                <div id="led-value" class="slider-value">0</div>
+
+                <!-- <div class="range-min">0</div> -->
+                <input
+                  type="range"
+                  id="led_intensity"
+                  min="0"
+                  max="15"
+                  value="0"
+                  step="1"
+                  class="form-range"
+                />
+                <!-- <div class="range-max">15</div> -->
+              </div>
+            </div>
+            <div class="control-group container" id="record-group">
+              <h4 class="text-white text-center">Record Movement</h4>
+              <br />
+            
+              <!-- small screens you get 2 columns, and on ≥md screens you get 4. -->
+              <div class="row row-cols-1 row-cols-md-1 g-3 mb-1">
+                <div class="control-item col d-flex flex-column">
+                  <!-- 1) Text/Input box above the button -->
+                  <input
+                    type="text"
+                    id="record-input"
+                    class="form-control form-control-lg mb-2 w-45"
+                    placeholder="Enter File Title BEFORE recording"
+                  />
+            
+                  <!-- 2) Your existing OFF button -->
+                  <button id="btn-record" class="toggle-btn off">OFF</button>
+                </div>
+              </div>
+            </div>
+            <div class="control-group container" id="direction-group">
+              <h4 class="text-white text-center">Movement</h4>
+              <br />
+
+              <!-- small screens you get 2 columns, and on ≥md screens you get 4.   -->
+              <div class="row row-cols-2 row-cols-md-4 g-3 mb-5">
+                <div class="control-item col d-flex flex-column">
+                  <label for="btn-forward">Forward</label>
+                  <button id="btn-forward" class="toggle-btn off">OFF</button>
+                </div>
+                <div class="control-item col d-flex flex-column">
+                  <label for="btn-back">Back</label>
+                  <button id="btn-back" class="toggle-btn off">OFF</button>
+                </div>
+                <div class="control-item col d-flex flex-column">
+                  <label for="btn-left">Turn Left</label>
+                  <button id="btn-left" class="toggle-btn off">OFF</button>
+                </div>
+                <div class="control-item col d-flex flex-column">
+                  <label for="btn-right">Turn Right</label>
+                  <button id="btn-right" class="toggle-btn off">OFF</button>
+                </div>
+              </div>
+
+              <div class="input-group" id="speed-group">
+                <!-- <label for="speed_intensity">Speed</label> -->
+                <h4 class="text-white text-center mb-3">Speed</h4>
+                <div class="slider-container">
+                  <div id="speed-value" class="slider-value">100</div>
+
+                  <!-- <div class="range-min">0</div> -->
+                  <input
+                    type="range"
+                    id="speed_intensity"
+                    min="0"
+                    max="100"
+                    value="100"
+                    step="1"
+                    class="form-range"
+                  />
+                  <!-- <div class="range-max">15</div> -->
+                </div>
+              </div>
+
+              
+          </nav>
+        </div>
+        <div>
+          <input type="checkbox" id="nav-toggle-cb" checked="checked" />
+          <nav class="menu">
+            <div class="control-group container" id="direction-group">
+              <!-- <h4 class="text-white text-center">Start Full Control</h4>
+
+              <div class="row row-cols-1 row-cols-md-1 g-3">
+                <div class="control-item col d-flex flex-column">
+                  <button id="start-full" class="toggle-btn off">OFF</button>
+                </div>
+              </div> -->
+              <h4 class="text-white text-center d-none">Cleaning</h4>
+
+              <div class="row row-cols-1 row-cols-md-1 g-3 d-none">
+                <div class="control-item col d-flex flex-column">
+                  <button id="cleaning" class="toggle-btn off">OFF</button>
+                  <!-- Main & Side brush, vaccum... -->
+                </div>
+              </div>
+              <h4 class="text-white text-center d-none">Swiffer</h4>
+              <!-- small screens you get 2 columns, and on ≥md screens you get 4.   -->
+              <!-- <div class="row row-cols-2 row-cols-md-4 g-3 mb-5"> -->
+              <div class="row row-cols-1 row-cols-md-1 g-3 mb-5 d-none">
+                <div class="control-item col d-flex flex-column">
+                  <label for="btn-swiffer-middle">Down=ON, Up=OFF</label>
+                  <button id="btn-swiffer-middle" class="toggle-btn off">
+                    OFF
+                  </button>
+                </div>
+                
+              </div>
+              <h4 class="text-white text-center">Vacuum</h4>
+              <!-- small screens you get 2 columns, and on ≥md screens you get 4.   -->
+              <!-- <div class="row row-cols-2 row-cols-md-4 g-3 mb-5"> -->
+              <div class="row row-cols-1 row-cols-md-1 g-3 mb-5">
+                <div class="control-item col d-flex flex-column">
+                  <button id="vacuum" class="toggle-btn off">
+                    OFF
+                  </button>
+                </div>
+                
+              </div>
+              <h4 class="text-white text-center">Files</h4>
+              <div 
+                id="files">
+              </div>
+            </div>
+          </nav>
+        </div>
+      </div>
+    </section>
+    <div
+      id="logConsole"
+      style="white-space: pre-wrap; font-family: monospace"
+    ></div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function (event) {
+        var baseHost = document.location.origin;
+        var streamUrl = baseHost + ":81";
+
+        function updateLogs() {
+          fetch("/logs")
+            .then((res) => res.text())
+            .then(
+              (txt) => (document.getElementById("logConsole").textContent = txt)
+            );
+        }
+        setInterval(updateLogs, 2000); // Refresh every 2 seconds
+
+        // This works for buttons, checkboxes, selects, and ranges to just pass in that value
+        function updateConfig(el, buttonValue = 0) {
+          let value;
+          switch (el.type) {
+            case "checkbox":
+              value = el.checked ? 1 : 0;
+              break;
+            case "range":
+            case "select-one":
+              value = el.value;
+              break;
+            case "button":
+            case "submit":
+              value = buttonValue;
+              break;
+            default:
+              return;
+          }
+
+          const query = `${baseHost}/control?var=${el.id}&val=${value}`;
+
+          fetch(query).then((response) => {
+            console.log(
+              `request to ${query} finished, status: ${response.status}`
+            );
+          });
+        }
+
+
+
+        // When user clicks "Delete", swap it out for "Yes" / "No"
+        function enterDeleteMode(btn, filename) {
+          const btnGroup = btn.parentElement;
+          // remove the Delete button
+          btn.remove();
+      
+          // create Yes button
+          const yes = document.createElement('button');
+          yes.type = 'button';
+          yes.className = 'btn btn-danger';
+          yes.textContent = 'Yes';
+          yes.id = "btn-delete-confirm";
+          yes.onclick = () => {
+            updateConfig(yes, filename);       // var=btn.id, val=filename
+            // reload list after a short delay so the deleted file disappears
+            setTimeout(updateFileList, 300);
+          };
+      
+          // create No button
+          const no = document.createElement('button');
+          no.type = 'button';
+          no.className = 'btn btn-secondary';
+          no.textContent = 'No';
+          no.onclick = () => {
+            // simply reload the list to put back the original Delete button
+            updateFileList();
+          };
+      
+          btnGroup.appendChild(yes);
+          btnGroup.appendChild(no);
+        }
+
+        function enterPlayMode(btn, filename) {
+          btn.id = "btn-play-confirm";
+          updateConfig(btn, filename);      
+        }
+
+        
+        window.enterPlayMode    = enterPlayMode;
+        window.enterDeleteMode = enterDeleteMode;
+
+
+        function updateFileList() {
+          fetch(`${baseHost}/files`)
+            .then(res => {
+              // 1) If the server didn’t give us a 200 OK, treat it as failure
+              if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+              }
+              return res.text();
+            })
+            .then(txt => {
+              // 2) Split into lines and filter for .txt names
+              const filenames = txt
+                .trim()
+                .split('\n')
+                .filter(name => name.endsWith('.txt'));
+        
+              // 3) If no .txt files, schedule a retry
+              if (filenames.length === 0) {
+                console.warn('No .txt files yet, retrying in 2s');
+                return setTimeout(updateFileList, 2000);
+              }
+        
+              // 4) Otherwise we have a valid list — build it once and stop retrying
+              const container = document.getElementById('files');
+              container.innerHTML = '';      // clear any old content
+        
+              filenames.forEach(name => {
+                const col = document.createElement('div');
+                col.className = 'col';
+                col.innerHTML = `
+                  <div class="card">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                      <span class="me-3">${name}</span>
+                      <div class="btn-group btn-group-sm" role="group">
+                        <button
+                          type="button"
+                          class="btn btn-primary"
+                          onclick="enterPlayMode(this, '${name}')"
+                        >Play</button>
+                        <button
+                          type="button"
+                          class="btn btn-danger"
+                          onclick="enterDeleteMode(this, '${name}')"
+                        >Delete</button>
+                      </div>
+                    </div>
+                  </div>`;
+                container.appendChild(col);
+              });
+            })
+            .catch(err => {
+              // 5) On any thrown error, retry after 2 seconds
+              console.warn('Failed to load file list, retrying in 2s', err);
+              setTimeout(updateFileList, 2000);
+            });
+        }
+        
+        window.addEventListener('DOMContentLoaded', updateFileList);
+      
+        
+      
+
+        // setInterval(updateFileList, 2000); // Refresh every 2 seconds
+        // window.addEventListener('DOMContentLoaded', updateFileList);
+
+
+
+        function fetchUrl(url, cb) {
+          fetch(url)
+            .then(function (response) {
+              if (response.status !== 200) {
+                cb(response.status, response.statusText);
+              } else {
+                response
+                  .text()
+                  .then(function (data) {
+                    cb(200, data);
+                  })
+                  .catch(function (err) {
+                    cb(-1, err);
+                  });
+              }
+            })
+            .catch(function (err) {
+              cb(-1, err);
+            });
+        }
+
+        function setXclk(xclk, cb) {
+          fetchUrl(`${baseHost}/xclk?xclk=${xclk}`, cb);
+        }
+
+        const hide = (el) => {
+          el.classList.add("hidden");
+        };
+        const show = (el) => {
+          el.classList.remove("hidden");
+        };
+
+        const disable = (el) => {
+          el.classList.add("disabled");
+          el.disabled = true;
+        };
+
+        const enable = (el) => {
+          el.classList.remove("disabled");
+          el.disabled = false;
+        };
+
+        const updateValue = (el, value, updateRemote) => {
+          updateRemote = updateRemote == null ? true : updateRemote;
+          let initialValue;
+          if (el.type === "checkbox") {
+            initialValue = el.checked;
+            value = !!value;
+            el.checked = value;
+          } else {
+            initialValue = el.value;
+            el.value = value;
+          }
+
+          if (updateRemote && initialValue !== value) {
+            updateConfig(el);
+          } else if (!updateRemote) {
+            if (el.id === "aec") {
+              value ? hide(exposure) : show(exposure);
+            } else if (el.id === "agc") {
+              if (value) {
+                show(gainCeiling);
+                hide(agcGain);
+              } else {
+                hide(gainCeiling);
+                show(agcGain);
+              }
+            } else if (el.id === "awb_gain") {
+              value ? show(wb) : hide(wb);
+            } else if (el.id == "led_intensity") {
+              value > -1 ? show(ledGroup) : hide(ledGroup);
+            }
+          }
+        };
+        
+
+        document.querySelectorAll(".close").forEach((el) => {
+          el.onclick = () => {
+            hide(el.parentNode);
+          };
+        });
+
+        // read initial values
+        fetch(`${baseHost}/status`)
+          .then(function (response) {
+            return response.json();
+          })
+          .then(function (state) {
+            document.querySelectorAll(".default-action").forEach((el) => {
+              updateValue(el, state[el.id], false);
+            });
+            document.querySelectorAll(".reg-action").forEach((el) => {
+              let reg = el.attributes.reg
+                ? parseInt(el.attributes.reg.nodeValue)
+                : 0;
+              if (reg == 0) {
+                return;
+              }
+              updateRegValue(el, state["0x" + reg.toString(16)], false);
+            });
+          });
+
+        const ledGroup = document.getElementById("led-group");
+
+        // Attach default on change action
+        document.querySelectorAll(".default-action").forEach((el) => {
+          el.onchange = () => updateConfig(el);
+        });
+
+        document.querySelectorAll(".form-range").forEach((el) => {
+          el.onchange = () => updateConfig(el);
+        });
+
+        const slider = document.getElementById("led_intensity");
+        const display = document.getElementById("led-value");
+
+        function updateLedSlider(slider, colorInput) {
+          const val = Number(slider.value);
+          const pct = ((val - slider.min) / (slider.max - slider.min)) * 100;
+          // const color = `linear-gradient(
+          //       to right,
+          //       red    0%,
+          //       yellow ${pct / 2}%,
+          //       green  ${pct}%,
+          //       #444   ${pct}%,
+          //       #444   100%
+          //     )`;
+
+          const color = `linear-gradient(
+                to right,
+                ${colorInput}    0%,
+                ${colorInput} ${pct / 2}%,
+                ${colorInput}  ${pct}%,
+                #444   ${pct}%,
+                #444   100%
+              )`;
+          slider.style.background = color;
+        }
+        slider.addEventListener("input", () => {
+          display.textContent = slider.value;
+          updateLedSlider(slider, "#adac46");
+          // optional: send fetch(`/control?var=led&val=${slider.value}`);
+        });
+
+        const slider_speed = document.getElementById("speed_intensity");
+        const display_speed = document.getElementById("speed-value");
+        updateLedSlider(slider_speed, "green"); //Initialize it as green
+        slider_speed.addEventListener("input", () => {
+          display_speed.textContent = slider_speed.value;
+          // optional: send fetch(`/control?var=led&val=${slider.value}`);
+          updateLedSlider(slider_speed, "green");
+        });
+
+        // 2) Direction toggles
+        const buttons = ["btn-forward", "btn-left", "btn-right", "btn-back"];
+        buttons.forEach((id) => {
+          const btn = document.getElementById(id);
+          btn.addEventListener("click", () => {
+            const isActive = btn.classList.contains("on");
+            buttons.forEach((otherId) => {
+              const b = document.getElementById(otherId);
+              if (otherId === id && !isActive) {
+                b.classList.replace("off", "on");
+                b.textContent = "ON";
+                updateConfig(b, 1); //Only care about the ON buttons as the other ones are assumed to be OFF
+                console.log("Movement: Turned button " + id + " ON");
+              } else {
+                b.classList.replace("on", "off");
+                b.textContent = "OFF";
+                if (isActive && otherId === id) {
+                  //Single out the current ID and send an update
+                  console.log(
+                    "Movement: Turned SINGULAR button " + otherId + " OFF"
+                  );
+                  updateConfig(b, 0); //We actually care that this is off since we just flipped the one on thing to off
+                }
+              }
+            });
+            // optional: send fetch(`/control?var=dir&val=${id.split("-")[1].toUpperCase()}`);
+          });
+        });
+        // 2) Direction toggles
+        /*
+        const buttonsSwiffer = [
+          "btn-swiffer-left",
+          "btn-swiffer-middle",
+          "btn-swiffer-right",
+        ];
+        */
+        const buttonsSwiffer = [
+          "btn-swiffer-middle"
+        ];
+        buttonsSwiffer.forEach((id) => {
+          const btn = document.getElementById(id);
+          btn.addEventListener("click", () => {
+            const isActive = btn.classList.contains("on");
+            buttonsSwiffer.forEach((otherId) => {
+              const b = document.getElementById(otherId);
+              if (otherId === id && !isActive) {
+                b.classList.replace("off", "on");
+                b.textContent = "ON";
+                updateConfig(b, 1); //Only care about the ON buttons as the other ones are assumed to be OFF
+                console.log("Movement: Turned button " + id + " ON");
+              } else {
+                b.classList.replace("on", "off");
+                b.textContent = "OFF";
+                if (isActive && otherId === id) {
+                  //Single out the current ID and send an update
+                  console.log(
+                    "Movement: Turned SINGULAR button " + otherId + " OFF"
+                  );
+                  updateConfig(b, 0); //We actually care that this is off since we just flipped the one on thing to off
+                }
+              }
+            });
+            // optional: send fetch(`/control?var=dir&val=${id.split("-")[1].toUpperCase()}`);
+          });
+        });
+
+        const buttonsVacuum = [
+          "vacuum"
+        ];
+        buttonsVacuum.forEach((id) => {
+          const btn = document.getElementById(id);
+          btn.addEventListener("click", () => {
+            const isActive = btn.classList.contains("on");
+            buttonsVacuum.forEach((otherId) => {
+              const b = document.getElementById(otherId);
+              if (otherId === id && !isActive) {
+                b.classList.replace("off", "on");
+                b.textContent = "ON";
+                updateConfig(b, 1); //Only care about the ON buttons as the other ones are assumed to be OFF
+                console.log("Movement: Turned button " + id + " ON");
+              } else {
+                b.classList.replace("on", "off");
+                b.textContent = "OFF";
+                if (isActive && otherId === id) {
+                  //Single out the current ID and send an update
+                  console.log(
+                    "Movement: Turned SINGULAR button " + otherId + " OFF"
+                  );
+                  updateConfig(b, 0); //We actually care that this is off since we just flipped the one on thing to off
+                }
+              }
+            });
+            // optional: send fetch(`/control?var=dir&val=${id.split("-")[1].toUpperCase()}`);
+          });
+        });
+        // 3) Other buttons with normal toggling
+        // const toggleButtons = ["cleaning", "start-full"];
+        // toggleButtons.forEach((id) => {
+        //   const btn = document.getElementById(id);
+        //   btn.addEventListener("click", () => {
+        //     const isActive = btn.classList.contains("on");
+        //     if (isActive) {
+        //       btn.classList.replace("on", "off");
+        //       btn.textContent = "OFF";
+        //       updateConfig(btn, 0); //We actually care that this is off since it's a singular component
+        //     } else {
+        //       btn.classList.replace("off", "on");
+        //       btn.textContent = "ON";
+        //       updateConfig(btn, 1);
+        //       // updateConfig(btn, btn.textContent === "ON" ? 1 : 0);
+        //     }
+        //     console.log(
+        //       "OtherButtons: Turned button " + id + " " + btn.textContent
+        //     );
+        //   });
+        // });
+        const resetBtn = document.getElementById("reset");
+        console.log("resetBtn", resetBtn);
+        resetBtn.addEventListener("click", () => {
+          console.log("Clicked resetBtn");
+          resetBtn.classList.replace("off", "on");
+          resetBtn.textContent = "Resetting...";
+          updateConfig(resetBtn, 1); //Send a reset command
+          // Refresh
+          setTimeout(() => {
+            window.location.reload();
+          }, 300); // Reload after 0.3 seconds
+        });
+
+        const recordMovement = document.getElementById("btn-record");
+        const recordFileName = document.getElementById("record-input");
+        recordMovement.addEventListener("click", () => {
+          const isActive = recordMovement.classList.contains("on");
+          if (isActive) {
+            recordMovement.classList.replace("on", "off");
+            recordMovement.textContent = "OFF";
+            updateConfig(recordMovement, recordFileName.value); //We actually care that this is off since it's a singular component
+          } else {
+            recordMovement.classList.replace("off", "on");
+            recordMovement.textContent = "ON";
+            updateConfig(recordMovement, 1);
+            // updateConfig(btn, btn.textContent === "ON" ? 1 : 0);
+          }
+          console.log(
+            "Record Movement: Turned button btn-record " +
+              recordMovement.textContent
+          );
+        });
+      });
+    </script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-j1CDi7MgGQ12Z7Qab0qlWQ/Qqz24Gc6BM0thvEMVjHnfYGF0rmFCozFSxQBxwHKO"
+      crossorigin="anonymous"
+    ></script>
+  </body>
+</html>
