@@ -35,6 +35,8 @@ struct keys {
   String walkTime = "WALKTIME";
 };
 
+int port = 80;
+WebServer server(port); // serve on port
 const keys CONST_KEYS;
 
 const char* EMPTY_VALUE = "";
@@ -54,6 +56,41 @@ String loadStringSetting(const char* key, const char* defaultVal = "") {
   String v = prefs.getString(key, defaultVal);
   prefs.end();
   return v;
+}
+
+
+String logBuffer = "";
+static std::vector<String> logLines;  
+static int holdMessageCount = 6;  // holds up to N messages
+
+void logMessage(const String& msg) {
+  logBuffer = "";
+  logLines.push_back(msg);
+  if (logLines.size() > holdMessageCount) {
+    logLines.erase(logLines.begin());
+  }
+
+  // logBuffer += msg + "\n";
+  for (auto &line : logLines) {
+    logBuffer += line + "\n";
+  }
+
+  Serial.println(msg);
+  if (logBuffer.length() > 1024) logBuffer = logBuffer.substring(512);  // keep it trimmed
+}
+
+
+void handleIndex() {
+  // inform browser this is gzipped HTML
+  server.sendHeader("Content-Encoding", "gzip");
+  // note: send_P lets us pass a pointer+len to flash data
+  server.send_P(200, "text/html",
+                (const char*)index_ov2640_html_gz,
+                index_ov2640_html_gz_len);
+}
+
+void handleLogs() {
+  server.send(200, "text/plain", logBuffer);
 }
 
 
@@ -93,6 +130,25 @@ bool tryWifi(const char* ssid, const char* pass) {
   }
   return connected;
 
+}
+
+void handleNextionPacket(uint8_t *p, int len) {
+  if (len <= 0) return;
+  uint8_t type = p[0];
+  if (type == 0x65 && len >= 4) {           // touch event
+    uint8_t page = p[1];
+    uint8_t comp = p[2];
+    uint8_t event = p[3];                   // 0=press,1=release
+    Serial.printf("Touch page=%d comp=%d ev=%d\n", page, comp, event);
+  } else if (type == 0x70) {                // string response
+    String s = String((char*)&p[1]);
+    Serial.println("Nextion string: " + s);
+  } else if (type == 0x71 && len >= 5) {    // number response
+    long val = (p[1]<<24) | (p[2]<<16) | (p[3]<<8) | p[4];
+    Serial.printf("Nextion number: %ld\n", val);
+  } else {
+    Serial.println("Unknown packet");
+  }
 }
 
 WifiCredentials connectionSequence() {
@@ -171,29 +227,13 @@ void setup() {
   if (connected) {
     Serial.println("Connected to Wi-Fi");
   }
-
+  
+  server.on("/",         HTTP_GET, handleIndex);
+  server.on("/logs", HTTP_GET, handleLogs);
+  server.begin();
+  Serial.printf("Connected MAIN SERVER, IP = %s\n", WiFi.localIP().toString().c_str());
   Serial.println("HTTP server running, ready for commands.");
 }
-
-void handleNextionPacket(uint8_t *p, int len) {
-  if (len <= 0) return;
-  uint8_t type = p[0];
-  if (type == 0x65 && len >= 4) {           // touch event
-    uint8_t page = p[1];
-    uint8_t comp = p[2];
-    uint8_t event = p[3];                   // 0=press,1=release
-    Serial.printf("Touch page=%d comp=%d ev=%d\n", page, comp, event);
-  } else if (type == 0x70) {                // string response
-    String s = String((char*)&p[1]);
-    Serial.println("Nextion string: " + s);
-  } else if (type == 0x71 && len >= 5) {    // number response
-    long val = (p[1]<<24) | (p[2]<<16) | (p[3]<<8) | p[4];
-    Serial.printf("Nextion number: %ld\n", val);
-  } else {
-    Serial.println("Unknown packet");
-  }
-}
-
 
 void loop() {
   // put your main code here, to run repeatedly:
@@ -208,6 +248,7 @@ void loop() {
   //     idx = 0;
   //   }
   // }
+  server.handleClient(); 
 
 
 }
