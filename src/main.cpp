@@ -6,7 +6,7 @@
 #include <iterator>   // for std::begin/​end
 #include <Wire.h>
 #include <EEPROM.h>
-#include <esp32cam.h>
+// #include <esp32cam.h>
 #include <SPI.h>
 #include <vector>
 #include <Preferences.h>
@@ -61,7 +61,7 @@ String loadStringSetting(const char* key, const char* defaultVal = "") {
 
 String logBuffer = "";
 static std::vector<String> logLines;  
-static int holdMessageCount = 6;  // holds up to N messages
+static int holdMessageCount = 8;  // holds up to N messages
 
 void logMessage(const String& msg) {
   logBuffer = "";
@@ -172,9 +172,13 @@ WifiCredentials connectionSequence() {
   return result;
 }
 
+// pio device monitor -p COM4 -b 115200 --filter esp32_exception_decoder
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  // Serial.println("hello");
+
   WiFi.mode(WIFI_STA); //Client/station mode.
   // WiFi.begin(ssid, password);
 
@@ -193,9 +197,9 @@ void setup() {
   creds.pass = loadStringSetting(CONST_KEYS.pass.c_str());
   // Wifi may not have a password
   if (creds.ssid.length() == 0) {
-    Serial.println("No prior SSID");
+    logMessage("No prior SSID");
   } else {
-    Serial.println("Prior SSID, try to connect to wifi");
+    logMessage("Prior SSID, try to connect to wifi");
     connected = tryWifi(creds.ssid.c_str(), creds.pass.c_str());
     creds.ok = connected;
     // Serial.printf("Did prior login save allow connection to wifi? creds.ok: %s\n", creds.ok ? "true" : "false");
@@ -204,7 +208,7 @@ void setup() {
   if (creds.ok) {
     
   } else {
-    Serial.println("No prior wifi");
+    logMessage("No prior wifi");
   }
 
   // Serial.println(creds);
@@ -216,23 +220,26 @@ void setup() {
 
   // connected = false;
   if (!connected) {
-    Serial.println("Finding WIFI as new");
+    logMessage("Finding WIFI as new");
     creds = connectionSequence();
     connected = creds.ok;
-    Serial.printf("Found wifi and logged in, did it work? creds.ok: %s\n", creds.ok ? "true" : "false");
+    String msg;
+    msg = "Found wifi and logged in, did it work? creds.ok: ";
+    msg += creds.ok ? "true" : "false";
+    logMessage(msg);
 
   }
   // Realistically we'll want to wait for a command to select to wifi then try again
   // connected = WiFi.status() == WL_CONNECTED;
   if (connected) {
-    Serial.println("Connected to Wi-Fi");
+    logMessage("Connected to Wi-Fi");
   }
   
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
   server.begin();
   Serial.printf("Connected MAIN SERVER, IP = %s\n", WiFi.localIP().toString().c_str());
-  Serial.println("HTTP server running, ready for commands.");
+  logMessage("HTTP server running, ready for commands.");
 }
 
 void loop() {
