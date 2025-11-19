@@ -14,6 +14,18 @@
 
 
 Preferences prefs;
+const bool TESTING_NEXTION = true;
+
+Stream *dbgSerial = nullptr;     // for debug output to PC
+Stream *nextionSerial = nullptr; // for Nextion commands
+
+
+const uint32_t USB_BAUD = 115200; //115200;   // PC debug
+const uint32_t NEXTION_BAUD = 9600; // Nextion
+
+
+// bool VERBOSE = true;
+
 
 // #include <HTTPClient.h>
 
@@ -75,7 +87,7 @@ void logMessage(const String& msg) {
     logBuffer += line + "\n";
   }
 
-  Serial.println(msg);
+  dbgSerial->println(msg);
   if (logBuffer.length() > 1024) logBuffer = logBuffer.substring(512);  // keep it trimmed
 }
 
@@ -110,11 +122,35 @@ Have walk time/time to get to first transport as optional as well, it'll use map
 
 */
 
-void sendCommand(String cmd) {
-  Serial1.print(cmd);
-  Serial1.write(0xFF); Serial1.write(0xFF); Serial1.write(0xFF);
-  delay(10);
+void sendCommand(const String &cmd) {
+  String c = cmd;
+  c.trim();                          // remove stray CR/LF
+  dbgSerial->println("TX->Nextion: " + c); // debug to USB Serial
+  // Serial1.write((const uint8_t*)c.c_str(), c.length());
+  // Serial1.write(0xFF); Serial1.write(0xFF); Serial1.write(0xFF);
+  // Serial1.flush();                   // wait for TX buffer to drain
+  // Serial1 for prod, Serial for testing with USB Serial monitor
+  nextionSerial->write((const uint8_t*)c.c_str(), c.length());
+  nextionSerial->write(0xFF); nextionSerial->write(0xFF); nextionSerial->write(0xFF);
+  nextionSerial->flush();                   // wait for TX buffer to drain
+  delay(50);                         // let Nextion process
+
+
+
+  // nextionSerial->print(cmd);
+  // nextionSerial->write(0xFF); nextionSerial->write(0xFF); nextionSerial->write(0xFF);
+  // delay(10);
 }
+
+
+void debugHex(const String &s) {
+  dbgSerial->print("HEX: ");
+  for (size_t i = 0; i < s.length(); ++i) {
+    dbgSerial->printf("%02X ", (uint8_t)s[i]);
+  }
+  dbgSerial->println(" FF FF FF");
+}
+
 
 bool tryWifi(const char* ssid, const char* pass) {
   WiFi.begin(ssid, pass);
@@ -139,44 +175,51 @@ void handleNextionPacket(uint8_t *p, int len) {
     uint8_t page = p[1];
     uint8_t comp = p[2];
     uint8_t event = p[3];                   // 0=press,1=release
-    Serial.printf("Touch page=%d comp=%d ev=%d\n", page, comp, event);
+    nextionSerial->printf("Touch page=%d comp=%d ev=%d\n", page, comp, event);
   } else if (type == 0x70) {                // string response
     String s = String((char*)&p[1]);
-    Serial.println("Nextion string: " + s);
+    nextionSerial->println("Nextion string: " + s);
   } else if (type == 0x71 && len >= 5) {    // number response
     long val = (p[1]<<24) | (p[2]<<16) | (p[3]<<8) | p[4];
-    Serial.printf("Nextion number: %ld\n", val);
+    nextionSerial->printf("Nextion number: %ld\n", val);
   } else {
-    Serial.println("Unknown packet");
+    nextionSerial->println("Unknown packet");
   }
 }
 
-WifiCredentials connectionSequence() {
+std::vector<String> connectionSequence() {
   int n = WiFi.scanNetworks();
   WifiCredentials result;
-
+  // String wifiList = "";
+  std::vector<String> wifiList;
     
   for (int i = 0; i < min(n,5); ++i) {               // send first 5 rows min(n,5)
     String s = WiFi.SSID(i);
     // sendCommand("t" + String(i) + ".txt=\"" + s + "\""); // assumes t0..t4 text fields on Nextion, this is why we may want to limit it to 5 only
-    Serial.println(s);
+    dbgSerial->println(s);
+    wifiList.push_back(s);
+    // wifiList += s;
   }
   // Realistically sleep wait until Nextion calls back with a submission attempt for this, and also send creds to Nextion
   // WiFi.begin(ssidTest, passTest);
-  saveSetting(CONST_KEYS.ssid.c_str(), ssidTest);
-  saveSetting(CONST_KEYS.pass.c_str(), passwordTest);
-  bool connected = tryWifi(ssidTest, passwordTest);
-  result.ok = connected;
-  result.ssid = ssidTest;
-  result.pass = passwordTest;
-  return result;
+  
+  return wifiList;
 }
 
-// pio device monitor -p COM4 -b 115200 --filter esp32_exception_decoder
+String joinWithNewline(const std::vector<String>& v) {
+  String out;
+  for (size_t i = 0; i < v.size(); ++i) {
+    if (i) out += '\n';   // add newline before every element except the first
+    out += v[i];
+  }
+  return out;
+}
+
+
 
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(115200);
+  Serial.begin(USB_BAUD);
   // Serial.println("hello");
 
   WiFi.mode(WIFI_STA); //Client/station mode.
@@ -184,10 +227,25 @@ void setup() {
 
 
   // example: RX=16, TX=17
-  Serial1.begin(9600, SERIAL_8N1, 16, 17); // ESP32 hardware UART
+  Serial1.begin(NEXTION_BAUD, SERIAL_8N1, 16, 17); // ESP32 hardware UART
   // send a Nextion command (must end with 0xFF 0xFF 0xFF)
   // Serial1.print("t0.txt=\"Hello\"\xFF\xFF\xFF");
   bool connected = false;
+
+  if (TESTING_NEXTION) {
+    // Editor on PC listens to USB serial, so send Nextion commands to Serial.
+    nextionSerial = &Serial;
+    // keep debug off the USB to avoid polluting the Editor; send debug to Serial1 (not connected)
+    dbgSerial = &Serial1;
+  } else {
+    // production: Nextion is on Serial1 pins, debug goes to USB Serial
+    nextionSerial = &Serial1;
+    dbgSerial = &Serial;
+  }
+
+  // Clear console of prior messages
+  sendCommand("");
+
 
   
   WiFi.disconnect(); 
@@ -217,11 +275,19 @@ void setup() {
   // WiFi.reconnect(); //Try to store credentials?
   
   
+  // Send command to Nextion to show wifi networks
 
   // connected = false;
   if (!connected) {
     logMessage("Finding WIFI as new");
-    creds = connectionSequence();
+    std::vector<String> wifiList = connectionSequence();
+    logMessage("Scanned wifi networks:\n" + joinWithNewline(wifiList));
+    saveSetting(CONST_KEYS.ssid.c_str(), ssidTest);
+    saveSetting(CONST_KEYS.pass.c_str(), passwordTest);
+    bool connected = tryWifi(ssidTest, passwordTest);
+    creds.ok = connected;
+    creds.ssid = ssidTest;
+    creds.pass = passwordTest;
     connected = creds.ok;
     String msg;
     msg = "Found wifi and logged in, did it work? creds.ok: ";
@@ -233,12 +299,20 @@ void setup() {
   // connected = WiFi.status() == WL_CONNECTED;
   if (connected) {
     logMessage("Connected to Wi-Fi");
+    // sendCommand("page HomePage");  // go to main page
+    // sendCommand("page HomePage");  
+    // sendCommand("page HomePage");  
+    // sendCommand("page HomePage");  
+    sendCommand("page HomePage"); 
+    
+    // sendCommand("page 1");
+    // debugHex("page HomePage");
   }
   
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
   server.begin();
-  Serial.printf("Connected MAIN SERVER, IP = %s\n", WiFi.localIP().toString().c_str());
+  dbgSerial->printf("Connected MAIN SERVER, IP = %s\n", WiFi.localIP().toString().c_str());
   logMessage("HTTP server running, ready for commands.");
 }
 
@@ -259,3 +333,8 @@ void loop() {
 
 
 }
+
+
+// Run script in monitor
+// cd C:\Users\ringk\OneDrive\Documents\PlatformIO\Projects\Transportation_IO
+// pio device monitor -p COM4 -b 115200 --filter esp32_exception_decoder
