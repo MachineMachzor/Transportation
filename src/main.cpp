@@ -14,7 +14,8 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = true;
+const bool TESTING_NEXTION = true; //If false, should be production nextion
+const bool FAKE_NO_WIFI = true; //If true, always go to no wifi page for testing
 
 Stream *dbgSerial = nullptr;     // for debug output to PC
 Stream *nextionSerial = nullptr; // for Nextion commands
@@ -142,6 +143,45 @@ void sendCommand(const String &cmd) {
   // delay(10);
 }
 
+std::vector<uint8_t> readNextionPacket(Stream &s, unsigned long timeoutMs = 3000) {
+  std::vector<uint8_t> buf;
+  unsigned long start = millis();
+  while (millis() - start < timeoutMs) {
+    while (s.available()) {
+      server.handleClient(); 
+      uint8_t b = s.read();
+      buf.push_back(b);
+      size_t n = buf.size();
+      if (n >= 3 && buf[n-1]==0xFF && buf[n-2]==0xFF && buf[n-3]==0xFF) {
+        // strip terminators for payload convenience
+        buf.resize(n-3);
+        return buf;
+      }
+      
+    }
+    delay(1);
+    server.handleClient(); // keep server responsive while waiting
+  }
+  server.handleClient(); 
+  return {}; // empty = timeout/no packet
+}
+
+// map Nextion component IDs to your button indices (fill with your IDs)
+const int compIdToButtonIndex[] = { -1, -1, /* index by component id */ };
+
+
+int waitForButtonPress(Stream &nx, unsigned long timeoutMs = 10000) {
+  auto pkt = readNextionPacket(nx, timeoutMs);
+  if (pkt.empty()) return -1;
+  // Nextion touch events begin with 0x65; payload layout: 0x65, eventType, componentId...
+  // Confirm header then return component id (pkt[2] if present)
+  if (pkt.size() >= 3 && pkt[0] == 0x65) {
+    return (int)pkt[2]; // component id
+  }
+  return -1;
+}
+
+
 
 void debugHex(const String &s) {
   dbgSerial->print("HEX: ");
@@ -206,6 +246,18 @@ std::vector<String> connectionSequence() {
   return wifiList;
 }
 
+
+void sendComponentTxt(int btnCount, int txtTruncateLength, std::vector<String> txtList, String componentType="b") {
+  // b = btn, t = txt
+  for (size_t i = 0; i < min(btnCount, int(txtList.size())); ++i) {
+    String txt = txtList[i];
+    if (txt.length() > txtTruncateLength) {
+      txt = txt.substring(0, txtTruncateLength); // truncate if too long
+    }
+    sendCommand(componentType + String(i) + ".txt=\"" + txt + "\"");
+  }
+}
+
 String joinWithNewline(const std::vector<String>& v) {
   String out;
   for (size_t i = 0; i < v.size(); ++i) {
@@ -254,7 +306,8 @@ void setup() {
   creds.ssid = loadStringSetting(CONST_KEYS.ssid.c_str());
   creds.pass = loadStringSetting(CONST_KEYS.pass.c_str());
   // Wifi may not have a password
-  if (creds.ssid.length() == 0) {
+  
+  if (creds.ssid.length() == 0 || FAKE_NO_WIFI) {
     logMessage("No prior SSID");
   } else {
     logMessage("Prior SSID, try to connect to wifi");
@@ -263,11 +316,7 @@ void setup() {
     // Serial.printf("Did prior login save allow connection to wifi? creds.ok: %s\n", creds.ok ? "true" : "false");
   }
 
-  if (creds.ok) {
-    
-  } else {
-    logMessage("No prior wifi");
-  }
+
 
   // Serial.println(creds);
   
@@ -279,9 +328,19 @@ void setup() {
 
   // connected = false;
   if (!connected) {
+    sendCommand("page NoWifiPage"); 
     logMessage("Finding WIFI as new");
     std::vector<String> wifiList = connectionSequence();
+    sendComponentTxt(5, 20, wifiList, "b"); // send first 5 networks to buttons, truncate to 20 chars
     logMessage("Scanned wifi networks:\n" + joinWithNewline(wifiList));
+    int compId = -1;
+    while (compId == -1) {
+      logMessage("Waiting for button press during wifi selection...");
+      compId = waitForButtonPress(*nextionSerial, 10000);
+    }
+    logMessage("Button pressed, compId: " + String(compId));
+    
+
     saveSetting(CONST_KEYS.ssid.c_str(), ssidTest);
     saveSetting(CONST_KEYS.pass.c_str(), passwordTest);
     bool connected = tryWifi(ssidTest, passwordTest);
