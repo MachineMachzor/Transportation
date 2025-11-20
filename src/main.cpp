@@ -11,6 +11,8 @@
 #include <vector>
 #include <Preferences.h>
 #include "camera_index.h"          // pulls in your gzipped HTML
+#include <map>
+#include <string>
 
 
 Preferences prefs;
@@ -47,6 +49,19 @@ struct keys {
   String endAddr = "END";
   String walkTime = "WALKTIME";
 };
+
+
+std::map<int, String> NOW_WIFI_PAGE_MAP = {
+    {2, "b0"},
+    {3, "b1"},
+    {4, "b2"},
+    {5, "b3"},
+    {6, "b4"},
+    {7, "b5"}
+};
+
+
+
 
 int port = 80;
 WebServer server(port); // serve on port
@@ -126,7 +141,7 @@ Have walk time/time to get to first transport as optional as well, it'll use map
 void sendCommand(const String &cmd) {
   String c = cmd;
   c.trim();                          // remove stray CR/LF
-  dbgSerial->println("TX->Nextion: " + c); // debug to USB Serial
+  logMessage("TX->Nextion: " + c); // debug to USB Serial
   // Serial1.write((const uint8_t*)c.c_str(), c.length());
   // Serial1.write(0xFF); Serial1.write(0xFF); Serial1.write(0xFF);
   // Serial1.flush();                   // wait for TX buffer to drain
@@ -135,9 +150,6 @@ void sendCommand(const String &cmd) {
   nextionSerial->write(0xFF); nextionSerial->write(0xFF); nextionSerial->write(0xFF);
   nextionSerial->flush();                   // wait for TX buffer to drain
   delay(50);                         // let Nextion process
-
-
-
   // nextionSerial->print(cmd);
   // nextionSerial->write(0xFF); nextionSerial->write(0xFF); nextionSerial->write(0xFF);
   // delay(10);
@@ -148,7 +160,7 @@ std::vector<uint8_t> readNextionPacket(Stream &s, unsigned long timeoutMs = 3000
   unsigned long start = millis();
   while (millis() - start < timeoutMs) {
     while (s.available()) {
-      server.handleClient(); 
+      // server.handleClient(); 
       uint8_t b = s.read();
       buf.push_back(b);
       size_t n = buf.size();
@@ -160,9 +172,9 @@ std::vector<uint8_t> readNextionPacket(Stream &s, unsigned long timeoutMs = 3000
       
     }
     delay(1);
-    server.handleClient(); // keep server responsive while waiting
+    // server.handleClient(); // keep server responsive while waiting
   }
-  server.handleClient(); 
+  // server.handleClient(); 
   return {}; // empty = timeout/no packet
 }
 
@@ -179,6 +191,20 @@ int waitForButtonPress(Stream &nx, unsigned long timeoutMs = 10000) {
     return (int)pkt[2]; // component id
   }
   return -1;
+}
+
+
+String getButtonText(Stream &nx, std::map<int, String> keyMap, int compId, unsigned long timeoutMs = 10000) {
+  sendCommand("get " + keyMap[compId] + ".txt");
+  auto pkt = readNextionPacket(nx, timeoutMs);
+  String text;
+  if (!pkt.empty() && pkt[0] == 0x70) {
+      for (size_t i = 1; i < pkt.size(); i++) {
+          if (pkt[i] == 0xFF) break;
+          text += (char)pkt[i];
+      }
+  }
+  return text;
 }
 
 
@@ -334,11 +360,32 @@ void setup() {
     sendComponentTxt(5, 20, wifiList, "b"); // send first 5 networks to buttons, truncate to 20 chars
     logMessage("Scanned wifi networks:\n" + joinWithNewline(wifiList));
     int compId = -1;
-    while (compId == -1) {
+    String text = "";
+    while (compId == -1 && (text.length() == 0 || text == "Loading...")) {
       logMessage("Waiting for button press during wifi selection...");
       compId = waitForButtonPress(*nextionSerial, 10000);
+      logMessage("Button pressed, compId: " + String(compId));
+      // sendCommand("get b" + String(compId) + ".txt"); // get text of button pressed
+      text = getButtonText(*nextionSerial, NOW_WIFI_PAGE_MAP, compId); // flush any prior response
+      // auto pkt = readNextionPacket(*nextionSerial, 10000);
+      // String text;
+      // if (!pkt.empty() && pkt[0] == 0x70) {
+      //     for (size_t i = 1; i < pkt.size(); i++) {
+      //         if (pkt[i] == 0xFF) break;
+      //         text += (char)pkt[i];
+      //     }
+      // }
+
+      if (text.length() == 0) {
+        logMessage("No text received from Nextion for selected wifi.");
+      } else {
+        logMessage("Selected wifi SSID: " + text);
+      }
     }
-    logMessage("Button pressed, compId: " + String(compId));
+
+    logMessage("Final SSID selected: " + text);
+   
+
     
 
     saveSetting(CONST_KEYS.ssid.c_str(), ssidTest);
