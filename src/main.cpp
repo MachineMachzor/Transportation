@@ -361,7 +361,7 @@ void setup() {
     logMessage("Scanned wifi networks:\n" + joinWithNewline(wifiList));
     int compId = -1;
     String text = "";
-    while (compId == -1 && (text.length() == 0 || text == "Loading...")) {
+    while (compId == -1 || text.length() == 0 || text == "Loading...") {
       logMessage("Waiting for button press during wifi selection...");
       compId = waitForButtonPress(*nextionSerial, 10000);
       logMessage("Button pressed, compId: " + String(compId));
