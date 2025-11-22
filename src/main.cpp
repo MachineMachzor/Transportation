@@ -42,6 +42,11 @@ struct WifiCredentials {
   bool ok = false;
 };
 
+struct buttonText {
+  int compId;
+  String text;
+};
+
 struct keys {
   String ssid = "SSID";
   String pass = "PASS";
@@ -301,12 +306,6 @@ void sendComponentTxt(int btnCount, int txtTruncateLength, std::vector<String> t
   }
 }
 
-
-// ROUTE: DecisionPage --> NoWifiPage --> WifiInput --> HomePage
-void DecisionPageRoute() {
-
-}
-
 String joinWithNewline(const std::vector<String>& v) {
   String out;
   for (size_t i = 0; i < v.size(); ++i) {
@@ -315,6 +314,49 @@ String joinWithNewline(const std::vector<String>& v) {
   }
   return out;
 }
+
+
+
+// ROUTE: DecisionPage --> NoWifiPage --> WifiInput --> HomePage
+buttonText SelectWifi() {
+  buttonText bt;
+  sendCommand("page NoWifiPage"); 
+  logMessage("Finding WIFI as new");
+  // delay(1000); // let Nextion switch pages
+  std::vector<String> wifiList = connectionSequence();
+  sendComponentTxt(5, 20, wifiList, "b"); // send first 5 networks to buttons, truncate to 20 chars
+  logMessage("Scanned wifi networks:\n" + joinWithNewline(wifiList));
+  int compId = -1;
+  String text = "";
+  while (compId == -1 || text.length() == 0 || text == "Loading...") {
+    logMessage("Waiting for button press during wifi selection...");
+    compId = waitForButtonPress(*nextionSerial, 10000);
+    logMessage("Button pressed, compId: " + String(compId));
+    // sendCommand("get b" + String(compId) + ".txt"); // get text of button pressed
+    sendCommand("get " + NO_WIFI_PAGE_MAP[compId] + ".txt");
+    text = getButtonText(*nextionSerial); // flush any prior response
+    // auto pkt = readNextionPacket(*nextionSerial, 10000);
+    // String text;
+    // if (!pkt.empty() && pkt[0] == 0x70) {
+    //     for (size_t i = 1; i < pkt.size(); i++) {
+    //         if (pkt[i] == 0xFF) break;
+    //         text += (char)pkt[i];
+    //     }
+    // }
+
+    if (text.length() == 0) {
+      logMessage("No text received from Nextion for selected wifi.");
+    } else {
+      logMessage("Selected wifi SSID: " + text);
+    }
+  }
+
+  logMessage("Final SSID selected: " + text);
+  bt.compId = compId;
+  bt.text = text;
+  return bt;
+}
+
 
 
 
@@ -384,38 +426,9 @@ void setup() {
 
   connected = false;
   if (!connected) {
-    sendCommand("page NoWifiPage"); 
-    logMessage("Finding WIFI as new");
-    // delay(1000); // let Nextion switch pages
-    std::vector<String> wifiList = connectionSequence();
-    sendComponentTxt(5, 20, wifiList, "b"); // send first 5 networks to buttons, truncate to 20 chars
-    logMessage("Scanned wifi networks:\n" + joinWithNewline(wifiList));
-    int compId = -1;
-    String text = "";
-    while (compId == -1 || text.length() == 0 || text == "Loading...") {
-      logMessage("Waiting for button press during wifi selection...");
-      compId = waitForButtonPress(*nextionSerial, 10000);
-      logMessage("Button pressed, compId: " + String(compId));
-      // sendCommand("get b" + String(compId) + ".txt"); // get text of button pressed
-      sendCommand("get " + NO_WIFI_PAGE_MAP[compId] + ".txt");
-      text = getButtonText(*nextionSerial); // flush any prior response
-      // auto pkt = readNextionPacket(*nextionSerial, 10000);
-      // String text;
-      // if (!pkt.empty() && pkt[0] == 0x70) {
-      //     for (size_t i = 1; i < pkt.size(); i++) {
-      //         if (pkt[i] == 0xFF) break;
-      //         text += (char)pkt[i];
-      //     }
-      // }
-
-      if (text.length() == 0) {
-        logMessage("No text received from Nextion for selected wifi.");
-      } else {
-        logMessage("Selected wifi SSID: " + text);
-      }
-    }
-
-    logMessage("Final SSID selected: " + text);
+    buttonText bt = SelectWifi();
+    String text = bt.text;
+    int compId = bt.compId;
     
     // After selecting wifi, go to the next page
     sendCommand("page WifiInput");
