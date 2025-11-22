@@ -15,11 +15,10 @@
 #include <string>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
-
-
+#include <ArduinoJson.h>
 
 Preferences prefs;
-const bool TESTING_NEXTION = true; //If false, should be production nextion
+const bool TESTING_NEXTION = false; //If false, should be production nextion
 const bool FAKE_NO_WIFI = true; //If true, always go to no wifi page for testing
 
 Stream *dbgSerial = nullptr;     // for debug output to PC
@@ -28,6 +27,9 @@ Stream *nextionSerial = nullptr; // for Nextion commands
 
 const uint32_t USB_BAUD = 115200; //115200;   // PC debug
 const uint32_t NEXTION_BAUD = 9600; // Nextion
+
+
+const int MAX_RESULTS = 10; // top N suggestions to keep
 
 
 // bool VERBOSE = true;
@@ -145,6 +147,180 @@ String httpGetStream(const String &url) {
   return result;
 }
 
+struct Place {
+  String name;
+  double lat;
+  double lon;
+};
+
+// --- Heuristic helpers to detect coordinates and names ---
+bool isValidLatLon(double a, double b) {
+  return (a >= -90.0 && a <= 90.0 && b >= -180.0 && b <= 180.0);
+}
+
+
+bool looksLikeName(const String &s) {
+  if (s.length() < 3) return false;
+  for (size_t i = 0; i < s.length(); ++i) {
+    if (isAlpha(s.charAt(i))) return true;
+  }
+  return false;
+}
+
+// --- Recursive extraction: find first name and first lat/lon pair in a JsonVariant ---
+void extractNameAndCoords(JsonVariant v, String &outName, double &outLat, double &outLon, bool &gotName, bool &gotCoords) {
+  if (gotName && gotCoords) return;
+
+  if (v.is<const char*>()) {
+    if (!gotName) {
+      String s = String((const char*)v);
+      if (looksLikeName(s)) {
+        outName = s;
+        gotName = true;
+        if (gotName && gotCoords) return;
+      }
+    }
+    return;
+  }
+
+  if (v.is<JsonArray>()) {
+    JsonArray arr = v.as<JsonArray>();
+    // First, scan for consecutive numeric pairs inside this array
+    for (size_t i = 0; i + 1 < arr.size(); ++i) {
+      if (!gotCoords && arr[i].is<double>() && arr[i+1].is<double>()) {
+        double a = arr[i].as<double>();
+        double b = arr[i+1].as<double>();
+        if (isValidLatLon(a, b)) {
+          outLat = a;
+          outLon = b;
+          gotCoords = true;
+          if (gotName && gotCoords) return;
+        }
+      }
+    }
+    // Recurse into children
+    for (JsonVariant item : arr) {
+      extractNameAndCoords(item, outName, outLat, outLon, gotName, gotCoords);
+      if (gotName && gotCoords) return;
+    }
+    return;
+  }
+
+  if (v.is<JsonObject>()) {
+    for (JsonPair kv : v.as<JsonObject>()) {
+      extractNameAndCoords(kv.value(), outName, outLat, outLon, gotName, gotCoords);
+      if (gotName && gotCoords) return;
+    }
+    return;
+  }
+}
+
+
+
+// --- Heuristic to find the suggestions array in the parsed JSON ---
+JsonVariant findSuggestionsRoot(JsonVariant root) {
+  // If root is an array, check if it looks like a suggestions list:
+  if (root.is<JsonArray>()) {
+    JsonArray arr = root.as<JsonArray>();
+    int candidateCount = 0;
+    for (JsonVariant child : arr) {
+      if (child.is<JsonArray>()) {
+        // if child contains at least one string, count it as a suggestion-like entry
+        bool hasString = false;
+        for (JsonVariant sub : child.as<JsonArray>()) {
+          if (sub.is<const char*>()) { hasString = true; break; }
+        }
+        if (hasString) candidateCount++;
+      }
+    }
+    // heuristics: if many children look like suggestion entries, return this array
+    if (candidateCount >= 2) return root;
+    // otherwise recurse into children
+    for (JsonVariant child : arr) {
+      JsonVariant found = findSuggestionsRoot(child);
+      if (!found.isNull()) return found;
+    }
+  } else if (root.is<JsonObject>()) {
+    for (JsonPair kv : root.as<JsonObject>()) {
+      JsonVariant found = findSuggestionsRoot(kv.value());
+      if (!found.isNull()) return found;
+    }
+  }
+  return JsonVariant(); // null
+}
+
+
+// Call this before deserializeJson
+String extractJsonArray(const String &raw) {
+  // find first '[' or '{'
+  int start = raw.indexOf('[');
+  int startObj = raw.indexOf('{');
+  if (startObj >= 0 && (startObj < start || start == -1)) start = startObj;
+  if (start == -1) return String(); // no JSON start found
+
+  // find last matching ']' or '}' by searching from the end
+  int end = raw.lastIndexOf(']');
+  int endObj = raw.lastIndexOf('}');
+  if (endObj > end) end = endObj;
+  if (end == -1 || end < start) return String(); // no JSON end found
+
+  // return substring inclusive of start..end
+  return raw.substring(start, end + 1);
+}
+
+// --- Main parser: given body string, fill places[] and return count ---
+int parsePlacesFromBody(const String &body, Place places[], int maxPlaces) {
+  String jsonPart = extractJsonArray(body);
+  if (jsonPart.length() == 0) {
+    dbgSerial->println("No JSON found in body");
+    return 0;
+  }
+
+  // tune capacity to expected JSON size; increase if deserializeJson returns NoMemory
+  const size_t capacity = 30000;
+  DynamicJsonDocument doc(capacity);
+
+  DeserializationError err = deserializeJson(doc, jsonPart);
+  if (err) {
+    dbgSerial->print("JSON parse failed: ");
+    dbgSerial->println(err.c_str());
+    // Optional: print a short snippet to debug
+    dbgSerial->print("JSON snippet: ");
+    dbgSerial->println(jsonPart);//jsonPart.substring(0, min(200, int(jsonPart.length()))));
+    return 0;
+  }
+
+
+  JsonVariant root = doc.as<JsonVariant>();
+  JsonVariant suggestions = findSuggestionsRoot(root);
+  if (suggestions.isNull()) {
+    // fallback: maybe root itself is the suggestions array
+    if (root.is<JsonArray>()) suggestions = root;
+    else {
+      dbgSerial->println("Could not find suggestions array heuristically.");
+      return 0;
+    }
+  }
+
+  int found = 0;
+  for (JsonVariant entry : suggestions.as<JsonArray>()) {
+    if (found >= maxPlaces) break;
+    String name = "";
+    double lat = 0.0, lon = 0.0;
+    bool gotName = false, gotCoords = false;
+
+    extractNameAndCoords(entry, name, lat, lon, gotName, gotCoords);
+
+    if (gotName && gotCoords) {
+      // store result
+      places[found].name = name;
+      places[found].lat = lat;
+      places[found].lon = lon;
+      found++;
+    }
+  }
+  return found;
+}
 
 String logBuffer = "";
 static std::vector<String> logLines;  
@@ -577,14 +753,20 @@ void setup() {
     // debugHex("page HomePage");
     sendCommand("page HomePage"); 
 
-    Serial.println("\nWiFi connected");
+    dbgSerial->println("\nWiFi connected");
 
     String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Tw&ech=7&pb=!2i2!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i1298!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sAvghab7tBdbV5NoP9PqxgQ0!7e81!17sAvghab7tBdbV5NoP9PqxgQ0%3A83!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i759"; // example (fragile)
     String body = httpGetStream(url);
     logMessage("Response length: " + String(body.length()));
-    logMessage(body); // or parse it
+    // dbgSerial->println(body); // or parse it
+    
+    Place places[MAX_RESULTS];
+    int count = parsePlacesFromBody(body, places, MAX_RESULTS);
 
-
+    dbgSerial->printf("Found %d places:\n", count);
+    for (int i = 0; i < count; ++i) {
+      dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
+    }
   }
   
   // if (!FAKE_NO_WIFI) {
