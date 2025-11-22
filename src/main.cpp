@@ -45,6 +45,9 @@ struct WifiCredentials {
 struct buttonText {
   int compId;
   String text;
+  String ssid = "";
+  String pass = "";
+  bool connected = false;
 };
 
 struct keys {
@@ -357,6 +360,69 @@ buttonText SelectWifi() {
   return bt;
 }
 
+// WifiLoginPage
+// sendCommand("page WifiInput");
+buttonText WifiLogin() {
+  int compId = -1;
+  String username;
+  String password;
+  WifiCredentials creds;
+  while (compId == -1){ //|| username.length() == 0 || password.length() == 0 || !creds.ok) {
+      creds = WifiCredentials();
+      logMessage("Waiting for button press during wifi login...");
+      compId = waitForButtonPress(*nextionSerial, 10000);
+  }
+  logMessage("Login Button pressed, compId: " + String(compId));
+  
+
+  sendCommand("get t2.txt");
+  username = getButtonText(*nextionSerial); // flush any prior response
+  sendCommand("get t4.txt");
+  password = getButtonText(*nextionSerial);
+
+  logMessage("Received wifi credentials from Nextion: SSID: " + username + ", Password: " + password);
+  bool hasError = false;
+  if (username.length() == 0) {
+    logMessage("No SSID entered, cannot connect to wifi.");
+    sendCommand("errorTxt.txt=\"" + login_errors_const.no_wifi + "\"");
+    hasError = true;
+  } else if (password.length() == 0) {
+    logMessage("No Password entered, cannot connect to wifi.");
+    sendCommand("errorTxt.txt=\""+login_errors_const.no_pass + "\"");
+    hasError = true;
+  } 
+
+  if (!hasError) {
+    bool connected = tryWifi(username.c_str(), password.c_str());
+    creds.ok = connected;
+    creds.ssid = username;
+    creds.pass = password;
+    if (!connected) {
+      logMessage("Failed to connect to wifi with provided credentials.");
+      sendCommand("errorTxt.txt=\""+login_errors_const.bad_login + "\"");
+    } else {
+      logMessage("Connected to wifi successfully!");
+      saveSetting(CONST_KEYS.ssid.c_str(), username.c_str());
+      saveSetting(CONST_KEYS.pass.c_str(), password.c_str());
+    }
+
+    
+    
+    
+    String msg;
+    msg = "Found wifi and logged in, did it work? creds.ok: ";
+    msg += creds.ok ? "true" : "false";
+    logMessage(msg);
+  }
+  buttonText bt;
+  bt.compId = compId;
+  bt.text = username;
+  bt.ssid = username;
+  bt.pass = password;
+  bt.connected = creds.ok;
+  return bt;
+}
+
 
 
 
@@ -444,54 +510,60 @@ void setup() {
     String password;
     creds = WifiCredentials();
 
-    
-    while (compId == -1){ //|| username.length() == 0 || password.length() == 0 || !creds.ok) {
-      creds = WifiCredentials();
-      logMessage("Waiting for button press during wifi login...");
-      compId = waitForButtonPress(*nextionSerial, 10000);
-    }
-    logMessage("Login Button pressed, compId: " + String(compId));
+    buttonText wl = WifiLogin();
+    username = wl.ssid;
+    password = wl.pass;
+    creds.ok = wl.connected;
     
 
-    sendCommand("get t2.txt");
-    username = getButtonText(*nextionSerial); // flush any prior response
-    sendCommand("get t4.txt");
-    password = getButtonText(*nextionSerial);
+    
+    // while (compId == -1){ //|| username.length() == 0 || password.length() == 0 || !creds.ok) {
+    //   creds = WifiCredentials();
+    //   logMessage("Waiting for button press during wifi login...");
+    //   compId = waitForButtonPress(*nextionSerial, 10000);
+    // }
+    // logMessage("Login Button pressed, compId: " + String(compId));
+    
 
-    logMessage("Received wifi credentials from Nextion: SSID: " + username + ", Password: " + password);
-    bool hasError = false;
-    if (username.length() == 0) {
-      logMessage("No SSID entered, cannot connect to wifi.");
-      sendCommand("errorTxt.txt=\"" + login_errors_const.no_wifi + "\"");
-      hasError = true;
-    } else if (password.length() == 0) {
-      logMessage("No Password entered, cannot connect to wifi.");
-      sendCommand("errorTxt.txt=\""+login_errors_const.no_pass + "\"");
-      hasError = true;
-    } 
+    // sendCommand("get t2.txt");
+    // username = getButtonText(*nextionSerial); // flush any prior response
+    // sendCommand("get t4.txt");
+    // password = getButtonText(*nextionSerial);
 
-    if (!hasError) {
-      bool connected = tryWifi(username.c_str(), password.c_str());
-      creds.ok = connected;
-      creds.ssid = username;
-      creds.pass = password;
-      if (!connected) {
-        logMessage("Failed to connect to wifi with provided credentials.");
-        sendCommand("errorTxt.txt=\""+login_errors_const.bad_login + "\"");
-      } else {
-        logMessage("Connected to wifi successfully!");
-        saveSetting(CONST_KEYS.ssid.c_str(), username.c_str());
-        saveSetting(CONST_KEYS.pass.c_str(), password.c_str());
-      }
+    // logMessage("Received wifi credentials from Nextion: SSID: " + username + ", Password: " + password);
+    // bool hasError = false;
+    // if (username.length() == 0) {
+    //   logMessage("No SSID entered, cannot connect to wifi.");
+    //   sendCommand("errorTxt.txt=\"" + login_errors_const.no_wifi + "\"");
+    //   hasError = true;
+    // } else if (password.length() == 0) {
+    //   logMessage("No Password entered, cannot connect to wifi.");
+    //   sendCommand("errorTxt.txt=\""+login_errors_const.no_pass + "\"");
+    //   hasError = true;
+    // } 
+
+    // if (!hasError) {
+    //   bool connected = tryWifi(username.c_str(), password.c_str());
+    //   creds.ok = connected;
+    //   creds.ssid = username;
+    //   creds.pass = password;
+    //   if (!connected) {
+    //     logMessage("Failed to connect to wifi with provided credentials.");
+    //     sendCommand("errorTxt.txt=\""+login_errors_const.bad_login + "\"");
+    //   } else {
+    //     logMessage("Connected to wifi successfully!");
+    //     saveSetting(CONST_KEYS.ssid.c_str(), username.c_str());
+    //     saveSetting(CONST_KEYS.pass.c_str(), password.c_str());
+    //   }
 
       
       
       
-      String msg;
-      msg = "Found wifi and logged in, did it work? creds.ok: ";
-      msg += creds.ok ? "true" : "false";
-      logMessage(msg);
-    }
+    //   String msg;
+    //   msg = "Found wifi and logged in, did it work? creds.ok: ";
+    //   msg += creds.ok ? "true" : "false";
+    //   logMessage(msg);
+    // }
     
 
    
