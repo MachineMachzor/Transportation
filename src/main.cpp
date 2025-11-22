@@ -50,8 +50,16 @@ struct keys {
   String walkTime = "WALKTIME";
 };
 
+struct login_errors {
+  String no_wifi = "No Wifi";
+  String no_pass = "No Password";
+  String bad_login = "Bad Login";
+};
 
-std::map<int, String> NOW_WIFI_PAGE_MAP = {
+login_errors login_errors_const;
+
+
+std::map<int, String> NO_WIFI_PAGE_MAP = {
     {2, "b0"},
     {3, "b1"},
     {4, "b2"},
@@ -59,6 +67,15 @@ std::map<int, String> NOW_WIFI_PAGE_MAP = {
     {6, "b4"},
     {7, "b5"}
 };
+
+// std::map<int, String> WIFI_INPUT_MAP = {
+//     {2, "b0"},
+//     {3, "b1"},
+//     {4, "b2"},
+//     {5, "b3"},
+//     {6, "b4"},
+//     {7, "b5"}
+// };
 
 
 
@@ -141,7 +158,7 @@ Have walk time/time to get to first transport as optional as well, it'll use map
 void sendCommand(const String &cmd) {
   String c = cmd;
   c.trim();                          // remove stray CR/LF
-  logMessage("TX->Nextion: " + c); // debug to USB Serial
+  // logMessage("TX->Nextion: " + c); // debug to USB Serial
   // Serial1.write((const uint8_t*)c.c_str(), c.length());
   // Serial1.write(0xFF); Serial1.write(0xFF); Serial1.write(0xFF);
   // Serial1.flush();                   // wait for TX buffer to drain
@@ -194,8 +211,8 @@ int waitForButtonPress(Stream &nx, unsigned long timeoutMs = 10000) {
 }
 
 
-String getButtonText(Stream &nx, std::map<int, String> keyMap, int compId, unsigned long timeoutMs = 10000) {
-  sendCommand("get " + keyMap[compId] + ".txt");
+String getButtonText(Stream &nx, unsigned long timeoutMs = 10000) {
+  
   auto pkt = readNextionPacket(nx, timeoutMs);
   String text;
   if (!pkt.empty() && pkt[0] == 0x70) {
@@ -284,6 +301,12 @@ void sendComponentTxt(int btnCount, int txtTruncateLength, std::vector<String> t
   }
 }
 
+
+// ROUTE: DecisionPage --> NoWifiPage --> WifiInput --> HomePage
+void DecisionPageRoute() {
+
+}
+
 String joinWithNewline(const std::vector<String>& v) {
   String out;
   for (size_t i = 0; i < v.size(); ++i) {
@@ -327,20 +350,27 @@ void setup() {
 
   
   WiFi.disconnect(); 
+  saveSetting(CONST_KEYS.ssid.c_str(), ssidTest);
+  saveSetting(CONST_KEYS.pass.c_str(), passwordTest);
   delay(100);   //Would remove prior connections, it stores it by default, could check to see if it's connected off the bat
   WifiCredentials creds;
-  creds.ssid = loadStringSetting(CONST_KEYS.ssid.c_str());
-  creds.pass = loadStringSetting(CONST_KEYS.pass.c_str());
+  if (FAKE_NO_WIFI) { // This is for testing really
+    creds.ssid = loadStringSetting(CONST_KEYS.ssid.c_str());
+    creds.pass = loadStringSetting(CONST_KEYS.pass.c_str());
+  }
+  
   // Wifi may not have a password
   
-  if (creds.ssid.length() == 0 || FAKE_NO_WIFI) {
+  if (creds.ssid.length() == 0) { //|| !FAKE_NO_WIFI
     logMessage("No prior SSID");
   } else {
     logMessage("Prior SSID, try to connect to wifi");
     connected = tryWifi(creds.ssid.c_str(), creds.pass.c_str());
     creds.ok = connected;
+    
     // Serial.printf("Did prior login save allow connection to wifi? creds.ok: %s\n", creds.ok ? "true" : "false");
   }
+  
 
 
 
@@ -352,10 +382,11 @@ void setup() {
   
   // Send command to Nextion to show wifi networks
 
-  // connected = false;
+  connected = false;
   if (!connected) {
     sendCommand("page NoWifiPage"); 
     logMessage("Finding WIFI as new");
+    // delay(1000); // let Nextion switch pages
     std::vector<String> wifiList = connectionSequence();
     sendComponentTxt(5, 20, wifiList, "b"); // send first 5 networks to buttons, truncate to 20 chars
     logMessage("Scanned wifi networks:\n" + joinWithNewline(wifiList));
@@ -366,7 +397,8 @@ void setup() {
       compId = waitForButtonPress(*nextionSerial, 10000);
       logMessage("Button pressed, compId: " + String(compId));
       // sendCommand("get b" + String(compId) + ".txt"); // get text of button pressed
-      text = getButtonText(*nextionSerial, NOW_WIFI_PAGE_MAP, compId); // flush any prior response
+      sendCommand("get " + NO_WIFI_PAGE_MAP[compId] + ".txt");
+      text = getButtonText(*nextionSerial); // flush any prior response
       // auto pkt = readNextionPacket(*nextionSerial, 10000);
       // String text;
       // if (!pkt.empty() && pkt[0] == 0x70) {
@@ -384,23 +416,78 @@ void setup() {
     }
 
     logMessage("Final SSID selected: " + text);
+    
+    // After selecting wifi, go to the next page
+    sendCommand("page WifiInput");
+    
+    if (text != "Unlisted") {
+      // ssidTest = (char*)text.c_str();
+      sendCommand("t2.txt=\"" + text + "\""); // set SSID field
+    }
+
+
+    compId = -1;
+    String username;
+    String password;
+    creds = WifiCredentials();
+
+    
+    while (compId == -1){ //|| username.length() == 0 || password.length() == 0 || !creds.ok) {
+      creds = WifiCredentials();
+      logMessage("Waiting for button press during wifi login...");
+      compId = waitForButtonPress(*nextionSerial, 10000);
+    }
+    logMessage("Login Button pressed, compId: " + String(compId));
+    
+
+    sendCommand("get t2.txt");
+    username = getButtonText(*nextionSerial); // flush any prior response
+    sendCommand("get t4.txt");
+    password = getButtonText(*nextionSerial);
+
+    logMessage("Received wifi credentials from Nextion: SSID: " + username + ", Password: " + password);
+    bool hasError = false;
+    if (username.length() == 0) {
+      logMessage("No SSID entered, cannot connect to wifi.");
+      sendCommand("errorTxt.txt=\"" + login_errors_const.no_wifi + "\"");
+      hasError = true;
+    } else if (password.length() == 0) {
+      logMessage("No Password entered, cannot connect to wifi.");
+      sendCommand("errorTxt.txt=\""+login_errors_const.no_pass + "\"");
+      hasError = true;
+    } 
+
+    if (!hasError) {
+      bool connected = tryWifi(username.c_str(), password.c_str());
+      creds.ok = connected;
+      creds.ssid = username;
+      creds.pass = password;
+      if (!connected) {
+        logMessage("Failed to connect to wifi with provided credentials.");
+        sendCommand("errorTxt.txt=\""+login_errors_const.bad_login + "\"");
+      } else {
+        logMessage("Connected to wifi successfully!");
+        saveSetting(CONST_KEYS.ssid.c_str(), username.c_str());
+        saveSetting(CONST_KEYS.pass.c_str(), password.c_str());
+      }
+
+      
+      
+      
+      String msg;
+      msg = "Found wifi and logged in, did it work? creds.ok: ";
+      msg += creds.ok ? "true" : "false";
+      logMessage(msg);
+    }
+    
+
    
 
     
 
-    saveSetting(CONST_KEYS.ssid.c_str(), ssidTest);
-    saveSetting(CONST_KEYS.pass.c_str(), passwordTest);
-    bool connected = tryWifi(ssidTest, passwordTest);
-    creds.ok = connected;
-    creds.ssid = ssidTest;
-    creds.pass = passwordTest;
-    connected = creds.ok;
-    String msg;
-    msg = "Found wifi and logged in, did it work? creds.ok: ";
-    msg += creds.ok ? "true" : "false";
-    logMessage(msg);
-
+    
   }
+  
   // Realistically we'll want to wait for a command to select to wifi then try again
   // connected = WiFi.status() == WL_CONNECTED;
   if (connected) {
@@ -414,6 +501,11 @@ void setup() {
     // sendCommand("page 1");
     // debugHex("page HomePage");
   }
+  
+  // if (!FAKE_NO_WIFI) {
+  //   WiFi.disconnect(); 
+  //   connected = tryWifi(ssidTest, passwordTest); // TEMP for testing so we can have our server
+  // }
   
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
