@@ -278,7 +278,7 @@ int parsePlacesFromBody(const String &body, Place places[], int maxPlaces) {
 
   // tune capacity to expected JSON size; increase if deserializeJson returns NoMemory
   const size_t capacity = 30000;
-  DynamicJsonDocument doc(capacity);
+  JsonDocument doc;
 
   DeserializationError err = deserializeJson(doc, jsonPart);
   if (err) {
