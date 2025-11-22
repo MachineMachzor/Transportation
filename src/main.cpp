@@ -64,6 +64,14 @@ struct login_errors {
   String bad_login = "Bad Login";
 };
 
+
+struct pco {
+  String red="53248";
+  String green="608";
+};
+
+pco PCO_COLORS;
+
 login_errors login_errors_const;
 
 
@@ -243,20 +251,17 @@ void debugHex(const String &s) {
 }
 
 
-bool tryWifi(const char* ssid, const char* pass) {
+bool tryWifi(const char* ssid, const char* pass, unsigned long timeout_ms = 20000) {
   WiFi.begin(ssid, pass);
-  bool connected = false;
-  for (int i = 0; i < 15; i++) {
-    connected = WiFi.status() == WL_CONNECTED;
-    if (connected) {
-      break;
-    } 
+  unsigned long start = millis();
+  while (millis() - start < timeout_ms) {
+    if (WiFi.status() == WL_CONNECTED) {
+      return true;
+    }
+    // do small delay to yield CPU; keep it short so loop is responsive
     delay(200);
-    
-
   }
-  return connected;
-
+  return false; // timed out
 }
 
 void handleNextionPacket(uint8_t *p, int len) {
@@ -393,11 +398,15 @@ buttonText WifiLogin() {
   } 
 
   if (!hasError) {
+    sendCommand("errorTxt.pco="+PCO_COLORS.green); //Make it green before connecting
+    sendCommand("errorTxt.txt=\"Connecting...\"");
     bool connected = tryWifi(username.c_str(), password.c_str());
+    sendCommand("errorTxt.pco="+PCO_COLORS.red);
+    sendCommand("errorTxt.txt=\"\""); //Empty it out
     creds.ok = connected;
     creds.ssid = username;
     creds.pass = password;
-    if (!connected) {
+    if (!creds.ok) {
       logMessage("Failed to connect to wifi with provided credentials.");
       sendCommand("errorTxt.txt=\""+login_errors_const.bad_login + "\"");
     } else {
@@ -473,10 +482,8 @@ void setup() {
     logMessage("No prior SSID");
   } else {
     logMessage("Prior SSID, try to connect to wifi");
-    connected = tryWifi(creds.ssid.c_str(), creds.pass.c_str());
-    creds.ok = connected;
-    
-    // Serial.printf("Did prior login save allow connection to wifi? creds.ok: %s\n", creds.ok ? "true" : "false");
+    // connected = tryWifi(creds.ssid.c_str(), creds.pass.c_str());
+    // creds.ok = connected;
   }
   
 
@@ -509,73 +516,22 @@ void setup() {
     String username;
     String password;
     creds = WifiCredentials();
+    buttonText wl;
 
-    buttonText wl = WifiLogin();
+    while (!creds.ok) {
+      wl = WifiLogin();
+      creds.ok = wl.connected;
+    }
+
     username = wl.ssid;
     password = wl.pass;
     creds.ok = wl.connected;
-    
-
-    
-    // while (compId == -1){ //|| username.length() == 0 || password.length() == 0 || !creds.ok) {
-    //   creds = WifiCredentials();
-    //   logMessage("Waiting for button press during wifi login...");
-    //   compId = waitForButtonPress(*nextionSerial, 10000);
-    // }
-    // logMessage("Login Button pressed, compId: " + String(compId));
-    
-
-    // sendCommand("get t2.txt");
-    // username = getButtonText(*nextionSerial); // flush any prior response
-    // sendCommand("get t4.txt");
-    // password = getButtonText(*nextionSerial);
-
-    // logMessage("Received wifi credentials from Nextion: SSID: " + username + ", Password: " + password);
-    // bool hasError = false;
-    // if (username.length() == 0) {
-    //   logMessage("No SSID entered, cannot connect to wifi.");
-    //   sendCommand("errorTxt.txt=\"" + login_errors_const.no_wifi + "\"");
-    //   hasError = true;
-    // } else if (password.length() == 0) {
-    //   logMessage("No Password entered, cannot connect to wifi.");
-    //   sendCommand("errorTxt.txt=\""+login_errors_const.no_pass + "\"");
-    //   hasError = true;
-    // } 
-
-    // if (!hasError) {
-    //   bool connected = tryWifi(username.c_str(), password.c_str());
-    //   creds.ok = connected;
-    //   creds.ssid = username;
-    //   creds.pass = password;
-    //   if (!connected) {
-    //     logMessage("Failed to connect to wifi with provided credentials.");
-    //     sendCommand("errorTxt.txt=\""+login_errors_const.bad_login + "\"");
-    //   } else {
-    //     logMessage("Connected to wifi successfully!");
-    //     saveSetting(CONST_KEYS.ssid.c_str(), username.c_str());
-    //     saveSetting(CONST_KEYS.pass.c_str(), password.c_str());
-    //   }
-
-      
-      
-      
-    //   String msg;
-    //   msg = "Found wifi and logged in, did it work? creds.ok: ";
-    //   msg += creds.ok ? "true" : "false";
-    //   logMessage(msg);
-    // }
-    
-
-   
-
-    
-
     
   }
   
   // Realistically we'll want to wait for a command to select to wifi then try again
   // connected = WiFi.status() == WL_CONNECTED;
-  if (connected) {
+  if (creds.ok) {
     logMessage("Connected to Wi-Fi");
     // sendCommand("page HomePage");  // go to main page
     // sendCommand("page HomePage");  
