@@ -482,8 +482,8 @@ void setup() {
     logMessage("No prior SSID");
   } else {
     logMessage("Prior SSID, try to connect to wifi");
-    // connected = tryWifi(creds.ssid.c_str(), creds.pass.c_str());
-    // creds.ok = connected;
+    connected = tryWifi(creds.ssid.c_str(), creds.pass.c_str());
+    creds.ok = connected;
   }
   
 
@@ -497,7 +497,7 @@ void setup() {
   
   // Send command to Nextion to show wifi networks
 
-  connected = false;
+  // connected = false;
   if (!connected) {
     buttonText bt = SelectWifi();
     String text = bt.text;
@@ -526,12 +526,7 @@ void setup() {
     username = wl.ssid;
     password = wl.pass;
     creds.ok = wl.connected;
-    
-  }
-  
-  // Realistically we'll want to wait for a command to select to wifi then try again
-  // connected = WiFi.status() == WL_CONNECTED;
-  if (creds.ok) {
+
     logMessage("Connected to Wi-Fi");
     // sendCommand("page HomePage");  // go to main page
     // sendCommand("page HomePage");  
@@ -539,8 +534,17 @@ void setup() {
     // sendCommand("page HomePage");  
     sendCommand("page HomePage"); 
     
+  }
+  
+  // Realistically we'll want to wait for a command to select to wifi then try again
+  // connected = WiFi.status() == WL_CONNECTED;
+  // Would have to do further checks here than this, as they may have prior stored addresses
+  if (creds.ok) {
+    
+    logMessage("Skipped wifi selection");
     // sendCommand("page 1");
     // debugHex("page HomePage");
+    sendCommand("page HomePage"); 
   }
   
   // if (!FAKE_NO_WIFI) {
