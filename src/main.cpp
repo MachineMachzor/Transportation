@@ -125,24 +125,24 @@ String loadStringSetting(const char* key, const char* defaultVal = "") {
 }
 
 String httpGetStream(const String &url) {
-  WiFiClientSecure *client = new WiFiClientSecure;
-  client->setInsecure();
-  HTTPClient https;
-  https.begin(*client, url);
-  https.addHeader("User-Agent", "ESP32/1.0");
-  int httpCode = https.GET();
-  String result = "";
-  if (httpCode > 0 && httpCode == HTTP_CODE_OK) {
-    WiFiClient *stream = https.getStreamPtr();
-    const size_t bufSize = 512;
+  WiFiClientSecure *client = new WiFiClientSecure; //Allocates TLS (transport layer security, wifi based communication between server and web ) on the heap so we can delete later
+  client->setInsecure();// disable certificate verification (SSL). For production, use root CA or fingerprint
+  HTTPClient https; //For performing the request
+  https.begin(*client, url); // initialize HTTPS connection with TLS and url
+  https.addHeader("User-Agent", "ESP32/1.0"); 
+  int httpCode = https.GET(); //blocking call (waits until we finish) for GET request. Already supplied enough info prior to make this call
+  String result = ""; //Prepares response
+  if (httpCode > 0 && httpCode == HTTP_CODE_OK) { //Good response
+    WiFiClient *stream = https.getStreamPtr(); // get stream pointer to read response body (TCP, transmission control protocol)
+    const size_t bufSize = 512; //Chunked reads
     uint8_t buf[bufSize];
-    while (https.connected() && stream->available()) {
-      size_t len = stream->readBytes(buf, bufSize);
-      result += String((char*)buf, len); // careful: still grows memory
+    while (https.connected() && stream->available()) { //connection is open and data is available
+      size_t len = stream->readBytes(buf, bufSize); //Reads bufSize bytes into buf, returns number of bytes read
+      result += String((char*)buf, len); // careful: still grows memory --> Append to result
       // Better: parse `buf` chunk-by-chunk instead of appending to `result`
     }
   }
-  https.end();
+  https.end(); //End session and free resources
   delete client;
   return result;
 }
@@ -155,27 +155,27 @@ struct Place {
 
 // --- Heuristic helpers to detect coordinates and names ---
 bool isValidLatLon(double a, double b) {
-  return (a >= -90.0 && a <= 90.0 && b >= -180.0 && b <= 180.0);
+  return (a >= -90.0 && a <= 90.0 && b >= -180.0 && b <= 180.0); //latitude, longitude ranges
 }
 
-
+// Pleasibly a human name/place
 bool looksLikeName(const String &s) {
-  if (s.length() < 3) return false;
-  for (size_t i = 0; i < s.length(); ++i) {
-    if (isAlpha(s.charAt(i))) return true;
+  if (s.length() < 3) return false; //At least X chars
+  for (size_t i = 0; i < s.length(); ++i) { 
+    if (isAlpha(s.charAt(i))) return true; //At least one character
   }
   return false;
 }
 
 // --- Recursive extraction: find first name and first lat/lon pair in a JsonVariant ---
 void extractNameAndCoords(JsonVariant v, String &outName, double &outLat, double &outLon, bool &gotName, bool &gotCoords) {
-  if (gotName && gotCoords) return;
+  if (gotName && gotCoords) return; //Return if already found
 
-  if (v.is<const char*>()) {
-    if (!gotName) {
-      String s = String((const char*)v);
-      if (looksLikeName(s)) {
-        outName = s;
+  if (v.is<const char*>()) { //If string
+    if (!gotName) { //And didnt find a name
+      String s = String((const char*)v); //Convert to string
+      if (looksLikeName(s)) { //If looks like a name
+        outName = s; //Store it
         gotName = true;
         if (gotName && gotCoords) return;
       }
@@ -183,7 +183,8 @@ void extractNameAndCoords(JsonVariant v, String &outName, double &outLat, double
     return;
   }
 
-  if (v.is<JsonArray>()) {
+  // Two consecutive patterns that looks like lat/lon [null,null,40.4650862,-79.9422204].
+  if (v.is<JsonArray>()) { //Is JsonArray
     JsonArray arr = v.as<JsonArray>();
     // First, scan for consecutive numeric pairs inside this array
     for (size_t i = 0; i + 1 < arr.size(); ++i) {
@@ -199,13 +200,14 @@ void extractNameAndCoords(JsonVariant v, String &outName, double &outLat, double
       }
     }
     // Recurse into children
+    // Same thing as above but on the child nodes
     for (JsonVariant item : arr) {
       extractNameAndCoords(item, outName, outLat, outLon, gotName, gotCoords);
       if (gotName && gotCoords) return;
     }
     return;
   }
-
+  // Keys ignored, iterate again and recurse through it
   if (v.is<JsonObject>()) {
     for (JsonPair kv : v.as<JsonObject>()) {
       extractNameAndCoords(kv.value(), outName, outLat, outLon, gotName, gotCoords);
@@ -218,6 +220,7 @@ void extractNameAndCoords(JsonVariant v, String &outName, double &outLat, double
 
 
 // --- Heuristic to find the suggestions array in the parsed JSON ---
+// Find strings and coordinates
 JsonVariant findSuggestionsRoot(JsonVariant root) {
   // If root is an array, check if it looks like a suggestions list:
   if (root.is<JsonArray>()) {
@@ -227,8 +230,9 @@ JsonVariant findSuggestionsRoot(JsonVariant root) {
       if (child.is<JsonArray>()) {
         // if child contains at least one string, count it as a suggestion-like entry
         bool hasString = false;
+        int stringCount = 0;
         for (JsonVariant sub : child.as<JsonArray>()) {
-          if (sub.is<const char*>()) { hasString = true; break; }
+          if (sub.is<const char*>()) { hasString=true; break; }
         }
         if (hasString) candidateCount++;
       }
@@ -755,7 +759,8 @@ void setup() {
 
     dbgSerial->println("\nWiFi connected");
 
-    String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Tw&ech=7&pb=!2i2!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i1298!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sAvghab7tBdbV5NoP9PqxgQ0!7e81!17sAvghab7tBdbV5NoP9PqxgQ0%3A83!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i759"; // example (fragile)
+    // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Tw&ech=7&pb=!2i2!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i1298!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sAvghab7tBdbV5NoP9PqxgQ0!7e81!17sAvghab7tBdbV5NoP9PqxgQ0%3A83!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i759"; // example (fragile)
+    String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Two+PNC+Plaza&ech=3&pb=!2i13!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i815!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sURMlaa7DOpPe5NoP99fnkQY!7e81!17sURMlaa7DOpPe5NoP99fnkQY%3A63!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i760";
     String body = httpGetStream(url);
     logMessage("Response length: " + String(body.length()));
     // dbgSerial->println(body); // or parse it
