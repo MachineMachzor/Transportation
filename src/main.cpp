@@ -157,172 +157,103 @@ struct Place {
 bool isValidLatLon(double a, double b) {
   return (a >= -90.0 && a <= 90.0 && b >= -180.0 && b <= 180.0); //latitude, longitude ranges
 }
+// --- Pattern matcher: only accept arrays shaped like:
+// [ "name-string", "id-string", [ null, null, <lat>, <lon> ] ]
+bool matchPatternAndStore(JsonArray arr, Place &out) {
+  // Need at least 3 elements: name, id, coords-array
+  if (arr.size() < 3) return false;
 
-// Pleasibly a human name/place
-bool looksLikeName(const String &s) {
-  if (s.length() < 3) return false; //At least X chars
-  for (size_t i = 0; i < s.length(); ++i) { 
-    if (isAlpha(s.charAt(i))) return true; //At least one character
-  }
-  return false;
+  // first element must be a string (name)
+  if (!arr[0].is<const char*>()) return false;
+
+  // third element must be an array
+  if (!arr[2].is<JsonArray>()) return false;
+
+  JsonArray coords = arr[2].as<JsonArray>();
+  // coords must have at least 4 elements and positions 2 and 3 must be numeric
+  if (coords.size() < 4) return false;
+  if (!coords[2].is<double>() || !coords[3].is<double>()) return false;
+
+  // All checks passed: extract values
+  out.name = String((const char*)arr[0].as<const char*>());
+  out.lat = coords[2].as<double>();
+  out.lon = coords[3].as<double>();
+  return true;
 }
 
-// --- Recursive extraction: find first name and first lat/lon pair in a JsonVariant ---
-void extractNameAndCoords(JsonVariant v, String &outName, double &outLat, double &outLon, bool &gotName, bool &gotCoords) {
-  if (gotName && gotCoords) return; //Return if already found
+// --- Recursive search that only collects matching patterns ---
+void searchForPatterns(JsonVariant v, Place places[], int &count, int maxPlaces) {
+  if (count >= maxPlaces) return;
 
-  if (v.is<const char*>()) { //If string
-    if (!gotName) { //And didnt find a name
-      String s = String((const char*)v); //Convert to string
-      if (looksLikeName(s)) { //If looks like a name
-        outName = s; //Store it
-        gotName = true;
-        if (gotName && gotCoords) return;
-      }
-    }
-    return;
-  }
-
-  // Two consecutive patterns that looks like lat/lon [null,null,40.4650862,-79.9422204].
-  if (v.is<JsonArray>()) { //Is JsonArray
+  if (v.is<JsonArray>()) {
     JsonArray arr = v.as<JsonArray>();
-    // First, scan for consecutive numeric pairs inside this array
-    for (size_t i = 0; i + 1 < arr.size(); ++i) {
-      if (!gotCoords && arr[i].is<double>() && arr[i+1].is<double>()) {
-        double a = arr[i].as<double>();
-        double b = arr[i+1].as<double>();
-        if (isValidLatLon(a, b)) {
-          outLat = a;
-          outLon = b;
-          gotCoords = true;
-          if (gotName && gotCoords) return;
-        }
-      }
+
+    // If this array itself matches the pattern, store it
+    if (matchPatternAndStore(arr, places[count])) {
+      count++;
+      if (count >= maxPlaces) return;
     }
-    // Recurse into children
-    // Same thing as above but on the child nodes
+
+    // Otherwise, recurse into children
     for (JsonVariant item : arr) {
-      extractNameAndCoords(item, outName, outLat, outLon, gotName, gotCoords);
-      if (gotName && gotCoords) return;
+      searchForPatterns(item, places, count, maxPlaces);
+      if (count >= maxPlaces) return;
     }
     return;
   }
-  // Keys ignored, iterate again and recurse through it
+
   if (v.is<JsonObject>()) {
     for (JsonPair kv : v.as<JsonObject>()) {
-      extractNameAndCoords(kv.value(), outName, outLat, outLon, gotName, gotCoords);
-      if (gotName && gotCoords) return;
+      searchForPatterns(kv.value(), places, count, maxPlaces);
+      if (count >= maxPlaces) return;
     }
     return;
   }
+
+  // primitives: nothing to do
 }
 
-
-
-// --- Heuristic to find the suggestions array in the parsed JSON ---
-// Find strings and coordinates
-JsonVariant findSuggestionsRoot(JsonVariant root) {
-  // If root is an array, check if it looks like a suggestions list:
-  if (root.is<JsonArray>()) {
-    JsonArray arr = root.as<JsonArray>();
-    int candidateCount = 0;
-    for (JsonVariant child : arr) {
-      if (child.is<JsonArray>()) {
-        // if child contains at least one string, count it as a suggestion-like entry
-        bool hasString = false;
-        int stringCount = 0;
-        for (JsonVariant sub : child.as<JsonArray>()) {
-          if (sub.is<const char*>()) { hasString=true; break; }
-        }
-        if (hasString) candidateCount++;
-      }
-    }
-    // heuristics: if many children look like suggestion entries, return this array
-    if (candidateCount >= 2) return root;
-    // otherwise recurse into children
-    for (JsonVariant child : arr) {
-      JsonVariant found = findSuggestionsRoot(child);
-      if (!found.isNull()) return found;
-    }
-  } else if (root.is<JsonObject>()) {
-    for (JsonPair kv : root.as<JsonObject>()) {
-      JsonVariant found = findSuggestionsRoot(kv.value());
-      if (!found.isNull()) return found;
-    }
-  }
-  return JsonVariant(); // null
-}
-
-
-// Call this before deserializeJson
-String extractJsonArray(const String &raw) {
-  // find first '[' or '{'
-  int start = raw.indexOf('[');
+String extractJsonPart(const String &raw) {
   int startObj = raw.indexOf('{');
-  if (startObj >= 0 && (startObj < start || start == -1)) start = startObj;
-  if (start == -1) return String(); // no JSON start found
+  int startArr = raw.indexOf('[');
+  int start = -1;
+  if (startObj >= 0 && (startObj < startArr || startArr == -1)) start = startObj;
+  else start = startArr;
+  if (start == -1) return String();
 
-  // find last matching ']' or '}' by searching from the end
-  int end = raw.lastIndexOf(']');
   int endObj = raw.lastIndexOf('}');
-  if (endObj > end) end = endObj;
-  if (end == -1 || end < start) return String(); // no JSON end found
-
-  // return substring inclusive of start..end
+  int endArr = raw.lastIndexOf(']');
+  int end = max(endObj, endArr);
+  if (end == -1 || end < start) return String();
   return raw.substring(start, end + 1);
 }
 
-// --- Main parser: given body string, fill places[] and return count ---
+
+// --- Parse function: extract JSON, parse, search, return count ---
 int parsePlacesFromBody(const String &body, Place places[], int maxPlaces) {
-  String jsonPart = extractJsonArray(body);
+  String jsonPart = extractJsonPart(body);
   if (jsonPart.length() == 0) {
-    dbgSerial->println("No JSON found in body");
+    Serial.println("No JSON found in body");
     return 0;
   }
 
-  // tune capacity to expected JSON size; increase if deserializeJson returns NoMemory
-  const size_t capacity = 30000;
-  JsonDocument doc;
+  // Tune capacity to your payload. Increase if deserializeJson returns NoMemory.
+  const size_t capacity = 40000;
+  DynamicJsonDocument doc(capacity);
 
   DeserializationError err = deserializeJson(doc, jsonPart);
   if (err) {
-    dbgSerial->print("JSON parse failed: ");
-    dbgSerial->println(err.c_str());
-    // Optional: print a short snippet to debug
-    dbgSerial->print("JSON snippet: ");
-    dbgSerial->println(jsonPart);//jsonPart.substring(0, min(200, int(jsonPart.length()))));
+    Serial.print("JSON parse failed: ");
+    Serial.println(err.c_str());
+    // Print a short snippet for debugging
+    Serial.print("Snippet: ");
+    Serial.println(jsonPart.substring(0, min(200, int(jsonPart.length()))));
     return 0;
   }
 
-
   JsonVariant root = doc.as<JsonVariant>();
-  JsonVariant suggestions = findSuggestionsRoot(root);
-  if (suggestions.isNull()) {
-    // fallback: maybe root itself is the suggestions array
-    if (root.is<JsonArray>()) suggestions = root;
-    else {
-      dbgSerial->println("Could not find suggestions array heuristically.");
-      return 0;
-    }
-  }
-
   int found = 0;
-  for (JsonVariant entry : suggestions.as<JsonArray>()) {
-    if (found >= maxPlaces) break;
-    String name = "";
-    double lat = 0.0, lon = 0.0;
-    bool gotName = false, gotCoords = false;
-
-    extractNameAndCoords(entry, name, lat, lon, gotName, gotCoords);
-
-    if (gotName && gotCoords) {
-      // store result
-      places[found].name = name;
-      places[found].lat = lat;
-      places[found].lon = lon;
-      found++;
-    }
-  }
+  searchForPatterns(root, places, found, maxPlaces);
   return found;
 }
 
