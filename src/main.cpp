@@ -19,7 +19,7 @@
 
 Preferences prefs;
 const bool TESTING_NEXTION = false; //If false, should be production nextion
-const bool FAKE_NO_WIFI = true; //If true, always go to no wifi page for testing
+const bool FAKE_WIFI = true; //If true, always go to no wifi page for testing
 
 Stream *dbgSerial = nullptr;     // for debug output to PC
 Stream *nextionSerial = nullptr; // for Nextion commands
@@ -239,7 +239,8 @@ int parsePlacesFromBody(const String &body, Place places[], int maxPlaces) {
 
   // Tune capacity to your payload. Increase if deserializeJson returns NoMemory.
   const size_t capacity = 40000;
-  DynamicJsonDocument doc(capacity);
+  // DynamicJsonDocument doc(capacity);
+  JsonDocument doc;
 
   DeserializationError err = deserializeJson(doc, jsonPart);
   if (err) {
@@ -571,7 +572,6 @@ buttonText WifiLogin() {
 
 
 
-
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(USB_BAUD);
@@ -609,18 +609,20 @@ void setup() {
 
   
   WiFi.disconnect(); 
-  saveSetting(CONST_KEYS.ssid.c_str(), ssidTest);
-  saveSetting(CONST_KEYS.pass.c_str(), passwordTest);
+  
   delay(100);   //Would remove prior connections, it stores it by default, could check to see if it's connected off the bat
   WifiCredentials creds;
-  if (FAKE_NO_WIFI) { // This is for testing really
-    creds.ssid = loadStringSetting(CONST_KEYS.ssid.c_str());
-    creds.pass = loadStringSetting(CONST_KEYS.pass.c_str());
+  if (FAKE_WIFI) { // This is for testing really
+    saveSetting(CONST_KEYS.ssid.c_str(), ssidTest);
+    saveSetting(CONST_KEYS.pass.c_str(), passwordTest); 
   }
+
+  creds.ssid = loadStringSetting(CONST_KEYS.ssid.c_str());
+  creds.pass = loadStringSetting(CONST_KEYS.pass.c_str());
   
   // Wifi may not have a password
   
-  if (creds.ssid.length() == 0) { //|| !FAKE_NO_WIFI
+  if (creds.ssid.length() == 0) { //|| !FAKE_WIFI
     logMessage("No prior SSID");
   } else {
     logMessage("Prior SSID, try to connect to wifi");
@@ -682,7 +684,6 @@ void setup() {
   // connected = WiFi.status() == WL_CONNECTED;
   // Would have to do further checks here than this, as they may have prior stored addresses
   if (creds.ok) {
-    
     logMessage("Skipped wifi selection");
     // sendCommand("page 1");
     // debugHex("page HomePage");
@@ -691,12 +692,16 @@ void setup() {
     dbgSerial->println("\nWiFi connected");
 
     // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Tw&ech=7&pb=!2i2!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i1298!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sAvghab7tBdbV5NoP9PqxgQ0!7e81!17sAvghab7tBdbV5NoP9PqxgQ0%3A83!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i759"; // example (fragile)
-    String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Two+PNC+Plaza&ech=3&pb=!2i13!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i815!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sURMlaa7DOpPe5NoP99fnkQY!7e81!17sURMlaa7DOpPe5NoP99fnkQY%3A63!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i760";
+    String searchQuery = "434";
+    Place places[MAX_RESULTS];
+    
+    searchQuery.replace(" ", "+");
+    String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=" + searchQuery + "&ech=3&pb=!2i13!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i815!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sURMlaa7DOpPe5NoP99fnkQY!7e81!17sURMlaa7DOpPe5NoP99fnkQY%3A63!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i760";
     String body = httpGetStream(url);
     logMessage("Response length: " + String(body.length()));
     // dbgSerial->println(body); // or parse it
     
-    Place places[MAX_RESULTS];
+    
     int count = parsePlacesFromBody(body, places, MAX_RESULTS);
 
     dbgSerial->printf("Found %d places:\n", count);
@@ -705,7 +710,7 @@ void setup() {
     }
   }
   
-  // if (!FAKE_NO_WIFI) {
+  // if (!FAKE_WIFI) {
   //   WiFi.disconnect(); 
   //   connected = tryWifi(ssidTest, passwordTest); // TEMP for testing so we can have our server
   // }
@@ -751,3 +756,34 @@ Is this all possible?
 // Run script in monitor
 // cd C:\Users\ringk\OneDrive\Documents\PlatformIO\Projects\Transportation_IO
 // pio device monitor -p COM4 -b 115200 --filter esp32_exception_decoder
+
+
+/*
+Notes on query
+**Short answer:** The two URLs differ only in opaque, internal Google UI parameters — the trailing `i759` vs `i760` is an internal index/token used by Google’s encoded `pb` payload (not a stable API field). The long `authuser=…&hl=…&gl=…&psi=…` sequence are standard query flags (account, language, country) plus a client/session token; the `pb` value itself is a compact, protobuf‑style blob that encodes many UI and pagination details.
+
+### What `i759` / `i760` likely means
+- **Not a semantic place ID**: `i759` and `i760` are part of Google’s *internal* request encoding and are not documented public parameters. They typically act as **small incremental tokens or indices** inside the `pb`/encoded payload that help the Maps UI track which page/view or image index is being requested.  
+- **Why they differ by 1**: when you change the query (for example from `Tw` to `Two+PNC+Plaza`) the UI generates a slightly different `pb` payload; one of the internal counters or indices increments, producing `i759` → `i760`. This is an implementation detail of Google’s client, not a stable API behavior.
+
+### What the `pb` parameter is
+- **`pb` is a compact, encoded payload** used by Google Maps web endpoints. It’s effectively a serialized, Closure‑compiled/protobuf‑style blob that encodes view state, pagination, zoom, result windows, and other UI parameters. People who reverse‑engineer Maps call it a protobuf‑like parameter and decode it with custom tools; it’s not meant for public consumption.
+
+### Meaning of `authuser`, `hl`, `gl`, `psi`
+- **`authuser=0`** — selects which signed‑in Google account to use (account index 0 is the primary account in the browser session).  
+- **`hl=en`** — sets the **language/locale** for the response (here English).  
+- **`gl=us`** — sets the **geographic/country context** (here United States), which can affect ranking and localized results.  
+- **`psi=...`** — a client/instance token (a short client/session identifier generated by the browser/JS) used by Google to correlate requests and client state; it’s not a documented API parameter and is part of the UI telemetry/coordination mechanism.
+
+### Practical implications
+- **Don’t rely on these parameters** for scraping or production logic — they are fragile and can change any time. Use the official **Maps URLs** or the **Places / Maps APIs** for stable programmatic access instead.  
+- If you must parse `pb`, use existing decoders (community projects exist) and treat results as brittle; decoding requires reverse‑engineering and may break when Google changes the client encoding.
+
+### Sources
+- `pb` decoding and embedded Maps parameter discussion (community/StackOverflow).  
+- Community protobuf decoders and tools for Google Maps `pb` blobs.  
+- Official Maps URLs docs explaining `hl`, `gl`, and general URL usage (recommended stable approach).  
+- Reverse‑engineering writeups on Maps pagination and client tokens (how `pb`/psi relate to pagination).
+
+
+*/
