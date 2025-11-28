@@ -1,0 +1,33 @@
+Overall trip:
+
+https://postimg.cc/3WjTG075
+
+Example Option:
+https://postimg.cc/LYt8hyNH
+
+
+
+
+For selected transit route, want the actual transit, and walking distance AND time to FIRST location as well as the first location
+1. Bus(s) name (some options have a slash, like P1/71B, probably meaning they start at the same station and you could pick either or. Just return the data as it is seen)
+2. Walking distance 
+3. Walking time
+4. Station Name 
+5. Time of next bus coming
+
+
+
+
+Example option that should be together, all of this should be present in the data:
+1. P1/P3
+2. 0.4 mi 
+3. 8 min 
+4. East Busway-All Stops to Swissvale 
+5. 11 min
+
+
+Parse the JSON parts of it and label it next to the options I did, and provide how I could scrape the patterns.
+Just respond with "I understand" for now as I will provide the JSON now.
+
+
+[5, ["61C", 1, "#ffffff", "#000000"]]

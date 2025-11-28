@@ -58,10 +58,16 @@ struct buttonText {
 struct keys {
   String ssid = "SSID";
   String pass = "PASS";
+};
+
+struct locationInputs {
   String startAddr = "START";
   String endAddr = "END";
   String walkTime = "WALKTIME";
 };
+
+locationInputs locals;
+
 
 struct login_errors {
   String no_wifi = "No Wifi";
@@ -154,6 +160,10 @@ struct Place {
 };
 Place places[MAX_RESULTS];
 int placesCount; 
+String searchQuery;
+
+
+String directionsSearch;
 
 // --- Heuristic helpers to detect coordinates and names ---
 bool isValidLatLon(double a, double b) {
@@ -572,9 +582,37 @@ buttonText WifiLogin() {
   return bt;
 }
 
+
+
+
+
 int getPlaces(String searchQuery, Place places[], int maxPlaces) {
   searchQuery.replace(" ", "+");
+  searchQuery.replace(",", "%2C");
   String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=" + searchQuery + "&ech=3&pb=!2i13!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i815!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sURMlaa7DOpPe5NoP99fnkQY!7e81!17sURMlaa7DOpPe5NoP99fnkQY%3A63!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i760";
+  String body = httpGetStream(url);
+  logMessage("Response length: " + String(body.length()));
+  // dbgSerial->println(body); // or parse it
+  
+  
+  int count = parsePlacesFromBody(body, places, MAX_RESULTS);
+
+  dbgSerial->printf("Found %d places:\n", count);
+  for (int i = 0; i < count; ++i) {
+    dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
+  }
+  return count;
+}
+
+
+int getDirections(String searchQuery, String start, String end) {
+  start.replace(" ", "+");
+  start.replace(",", "%2C");
+  end.replace(" ", "+");
+  end.replace(",", "%2C");
+  String url = "https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s" + start + "!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s" + end + "!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184";
+  dbgSerial->println("DirectionsURL: " + url);
+  return 0;
   String body = httpGetStream(url);
   logMessage("Response length: " + String(body.length()));
   // dbgSerial->println(body); // or parse it
@@ -711,8 +749,14 @@ void setup() {
     dbgSerial->println("\nWiFi connected");
 
     // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Tw&ech=7&pb=!2i2!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i1298!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sAvghab7tBdbV5NoP9PqxgQ0!7e81!17sAvghab7tBdbV5NoP9PqxgQ0%3A83!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i759"; // example (fragile)
-    String searchQuery = "434";
-    placesCount = getPlaces(searchQuery, places, MAX_RESULTS);
+    searchQuery = "434";
+    // placesCount = getPlaces(searchQuery, places, MAX_RESULTS);
+
+    locals.startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
+    locals.endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
+    int count = getDirections("434 to waterfront", locals.startAddr, locals.endAddr);
+
+
     
     // searchQuery.replace(" ", "+");
     // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=" + searchQuery + "&ech=3&pb=!2i13!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i815!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sURMlaa7DOpPe5NoP99fnkQY!7e81!17sURMlaa7DOpPe5NoP99fnkQY%3A63!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i760";
@@ -778,7 +822,7 @@ Is this all possible?
 
 
 /*
-Notes on query
+Notes on internally what query means
 **Short answer:** The two URLs differ only in opaque, internal Google UI parameters — the trailing `i759` vs `i760` is an internal index/token used by Google’s encoded `pb` payload (not a stable API field). The long `authuser=…&hl=…&gl=…&psi=…` sequence are standard query flags (account, language, country) plus a client/session token; the `pb` value itself is a compact, protobuf‑style blob that encodes many UI and pagination details.
 
 ### What `i759` / `i760` likely means
@@ -805,4 +849,52 @@ Notes on query
 - Reverse‑engineering writeups on Maps pagination and client tokens (how `pb`/psi relate to pagination).
 
 
+
+Notes on seeing how a particular element gets populated:
+**Exploring network requests in Chrome DevTools**
+
+I need to mention using "Copy as cURL" to replay requests. For Google Maps, many requests are encoded in the pb param, and some content is generated client-side from these payloads. I’ll also suggest using the "Pretty print" and "Response" tabs to inspect JSON. To map an element to a network request, I can right-click the element and use "Reveal in Elements panel" or "Inspect." I’ll also explain how to use breakpoints and the "Initiator" column to track requests. I’ll make sure to include step-by-step instructions for Chrome DevTools.
+**Yes. Use DevTools to pause DOM changes and inspect the network requests that ran just before the element was created — set a DOM breakpoint on that element, then check the Network panel and the Call Stack to find the exact XHR/fetch that produced its data.**  
+
+### Quick steps to capture the request that created a DOM node
+1. **Open DevTools** → Elements panel and locate the `<div class="m6QErb XiKgde">` node.  
+2. **Right‑click the node** → Break on → **Subtree modifications**. This causes the debugger to pause when scripts add/remove children under that node.  
+3. **Trigger the UI action** that populates the element (type, click, or reload). When the DOM changes, DevTools will pause in the Sources panel and show the **call stack** that performed the modification.  
+4. **Inspect the call stack** to find the JS function that appended children. Expand frames to see the script and line; that frame often shows the code that handled the network response.  
+5. **Switch to the Network panel** (keep DevTools open and enable Preserve log). Look for XHR/fetch requests that completed just before the paused time; use the **Initiator** column to correlate which script started each request and the timing.  
+6. **Open the candidate request** → Headers and Response to inspect the payload that produced the element. Use Copy as cURL or Copy as fetch to replay the request if needed.
+
+### Alternative and complementary techniques
+- **XHR/fetch breakpoints** in Sources → Breakpoints → XHR/fetch. This pauses when any XHR or fetch resolves, letting you inspect the response and call stack immediately.  
+- **Event Listener Breakpoints** → DOM Mutation → subtree modifications to pause on broader mutation events if you can’t find the exact node.  
+- **Filter Network by XHR** and sort by Time or use the Waterfall to find requests that finished right before the DOM change; expand a request to see its initiator chain for exact origin.  
+- **Use the Console**: after the element exists, run `$0` (selected element) to inspect it, then check `getEventListeners($0)` or walk up to find attached handlers that may reference the request logic.
+
+### Practical tips to make this reliable
+- **Enable Preserve log** in Network so requests aren’t cleared on navigation.  
+- **Disable cache** while debugging to avoid cached responses.  
+- **Narrow the Network list** by filtering domain or resource type (XHR/fetch).  
+- If the page uses websockets or streaming, check the **WS** entries or the streaming response in the request’s response tab.  
+- If the site obfuscates requests (protobuf/`pb` blobs), inspect the raw response and the JS code in the paused frame to see how it decodes the payload.
+
+### References
+- Chrome DevTools Network panel documentation for inspecting requests and responses.  
+- How to set DOM breakpoints in Chrome DevTools to pause on subtree modifications.  
+- Understanding request initiator chains to correlate network requests with the code that started them.
+
+
+
+
+Query on directions
+
+https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s434+Shady+Avenue%2C+Pittsburgh%2C+PA!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s400+East+Waterfront+Drive%2C+Homestead%2C+PA+15120!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184
+
+This is the normal URL to analyze in comparison to find the nested patterns:
+https://www.google.com/maps/dir/434+Shady+Avenue,+Pittsburgh,+PA/400+East+Waterfront+Drive,+Homestead,+PA+15120/@40.4318528,-79.9255915,12z/data=!4m14!4m13!1m5!1m1!1s0x8834f20bad463bcb:0x4104e286b57ee3d5!2m2!1d-79.9221308!2d40.4546065!1m5!1m1!1s0x8834ee236ec7350f:0x73fa84093902b486!2m2!1d-79.9099369!2d40.4120663!3e3?entry=ttu&g_ep=EgoyMDI1MTEyMy4xIKXMDSoASAFQAw%3D%3D
+
+
+Array formatter
+https://alignhash.codeutility.io/
+
 */
+
