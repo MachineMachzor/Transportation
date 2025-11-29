@@ -30,4 +30,42 @@ Parse the JSON parts of it and label it next to the options I did, and provide h
 Just respond with "I understand" for now as I will provide the JSON now.
 
 
-[5, ["61C", 1, "#ffffff", "#000000"]]
+Example data dn how it looks in the json
+1. P1/P3 --> [5, ["61C", 1, "#ffffff", "#000000"]] --> line 433
+
+The 5 is an element type code, describing the second item (being a route/line label)
+"71B" is the line identifier (bus name or route)
+1 --> display flag, controlling rendering
+"#ffffff" foreground
+"#000000" background
+
+
+2. 0.4 mi --> [818, "0.5 mi", 1] --> Line 5082
+
+818 is raw distance value in meters
+0.5 mi is a human readable distance 
+1 is display flag
+
+3. 8 min --> [684, "11 min", 660] --> 5087
+4. East Busway-All Stops to Swissvale 
+
+(Station name, id, and departure time array)
+[
+  "Forbes + Margaret Morrison NS", --> Stop name
+  "18173", --> Stop identifier
+  [
+    1764151681, --> Unix epoch timestamp (since 1970) for the scheduled/expected event 
+    "America/New_York", --> Timezone identifier for display
+    "5:08 AM", --> Human readable time 
+    -18000, --> UTC offset, negative for EST
+    1764151680 --> auxillary epoch (often rounded, it's an implementation detail)
+  ],
+  ...
+]
+
+5. 11 min --> ["departure_time": [1764151681, "America/New_York", "5:08 AM", -18000, 1764151680]] (third element is human readable)
+
+
+
+
+
