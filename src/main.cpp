@@ -55,6 +55,15 @@ struct buttonText {
   bool connected = false;
 };
 
+struct BoardingInfo {
+  String busLabel;
+  String walkDistance;
+  String walkTime;
+  String stationName;
+  String nextBusTime;
+};
+
+
 struct keys {
   String ssid = "SSID";
   String pass = "PASS";
@@ -165,6 +174,478 @@ String searchQuery;
 
 String directionsSearch;
 
+
+bool isDistanceArray(JsonVariant v) {
+  // Expect [number, "0.5 mi", flag]
+  if (!v.is<JsonArray>()) return false;
+  JsonArray a = v.as<JsonArray>();
+  if (a.size() < 2) return false;
+  return a[1].is<const char*>() && (String((const char*)a[1]).indexOf("mi") >= 0 || String((const char*)a[1]).indexOf("ft") >= 0 || String((const char*)a[1]).indexOf("km") >= 0);
+}
+
+bool isDurationArray(JsonVariant v) {
+  // Expect [seconds, "11 min", maybe]
+  if (!v.is<JsonArray>()) return false;
+  JsonArray a = v.as<JsonArray>();
+  if (a.size() < 2) return false;
+  return a[1].is<const char*>() && (String((const char*)a[1]).indexOf("min") >= 0 || String((const char*)a[1]).indexOf("sec") >= 0);
+}
+
+bool stepContainsType5(JsonVariant step, JsonVariant &type5Element) {
+  // step is expected to be an array of elements; find element whose first value == 5
+  if (!step.is<JsonArray>()) return false;
+  for (JsonVariant elem : step.as<JsonArray>()) {
+    if (elem.is<JsonArray>() && elem.size() >= 1) {
+      JsonVariant first = elem[0];
+      if (first.is<int>() && first.as<int>() == 5) {
+        type5Element = elem;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+String extractLabelFromType5(JsonVariant type5Elem) {
+  // type5Elem is like [5, ["61C", 1, "#fff", "#000"]]
+  if (!type5Elem.is<JsonArray>()) return String();
+  if (type5Elem.size() < 2) return String();
+  JsonVariant payload = type5Elem[1];
+  if (!payload.is<JsonArray>()) return String();
+  if (payload.size() < 1) return String();
+  if (payload[0].is<const char*>()) return String((const char*)payload[0]);
+  return String();
+}
+
+bool findFirstStopInTransitStep(JsonVariant transitStep, JsonVariant &stopOut) {
+  // Transit step often contains a nested stops array; search for an array element that looks like a stop:
+  // stop looks like ["Stop Name", "stopId", [ts, tz, "5:08 AM", offset, aux], ...]
+  if (!transitStep.is<JsonArray>()) return false;
+  for (JsonVariant elem : transitStep.as<JsonArray>()) {
+    if (elem.is<JsonArray>()) {
+      // If the element's first child is a string and second is string and third is array -> candidate stop
+      JsonArray candidate = elem.as<JsonArray>();
+      if (candidate.size() >= 3 && candidate[0].is<const char*>() && candidate[1].is<const char*>() && candidate[2].is<JsonArray>()) {
+        stopOut = candidate;
+        return true;
+      }
+      // Sometimes stops are nested deeper; check children
+      for (JsonVariant child : candidate) {
+        if (child.is<JsonArray>()) {
+          JsonArray c2 = child.as<JsonArray>();
+          if (c2.size() >= 3 && c2[0].is<const char*>() && c2[1].is<const char*>() && c2[2].is<JsonArray>()) {
+            stopOut = c2;
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+String extractHumanTimeFromDepartureArray(JsonVariant departureArr) {
+  // departureArr expected like [unix_ts, "America/New_York", "5:08 AM", offset, aux]
+  if (!departureArr.is<JsonArray>()) return String();
+  JsonArray a = departureArr.as<JsonArray>();
+  if (a.size() >= 3 && a[2].is<const char*>()) {
+    return String((const char*)a[2]);
+  }
+  // fallback: if unix ts present, format roughly (we avoid heavy time libs on Arduino)
+  if (a.size() >= 1 && a[0].is<long>()) {
+    long ts = a[0].as<long>();
+    // crude fallback: return epoch as string
+    return String(ts);
+  }
+  return String();
+}
+
+// Try to extract the five fields from a route object (routeVariant)
+bool extractBoardingFromRoute(JsonVariant routeVariant, BoardingInfo &out) {
+  // Look for legs -> steps structure first
+  if (routeVariant.is<JsonObject>() && routeVariant.containsKey("legs")) {
+    JsonArray legs = routeVariant["legs"].as<JsonArray>();
+    for (JsonVariant leg : legs) {
+      if (!leg.is<JsonObject>() && !leg.is<JsonArray>()) continue;
+      // steps may be under "steps"
+      if (leg.is<JsonObject>() && leg.containsKey("steps")) {
+        JsonArray steps = leg["steps"].as<JsonArray>();
+        for (size_t i = 0; i < steps.size(); ++i) {
+          JsonVariant step = steps[i];
+          JsonVariant type5Elem;
+          if (stepContainsType5(step, type5Elem)) {
+            // Found transit step
+            out.busLabel = extractLabelFromType5(type5Elem);
+            // find first stop in this transit step
+            JsonVariant firstStop;
+            if (findFirstStopInTransitStep(step, firstStop)) {
+              if (firstStop[0].is<const char*>()) out.stationName = String((const char*)firstStop[0]);
+              if (firstStop[2].is<JsonArray>()) out.nextBusTime = extractHumanTimeFromDepartureArray(firstStop[2]);
+            }
+            // find walk step immediately before
+            if (i > 0) {
+              JsonVariant walkStep = steps[i - 1];
+              // scan elements in walkStep for distance and duration arrays
+              for (JsonVariant elem : walkStep.as<JsonArray>()) {
+                if (isDistanceArray(elem)) {
+                  out.walkDistance = String((const char*)elem[1].as<const char*>());
+                } else if (isDurationArray(elem)) {
+                  out.walkTime = String((const char*)elem[1].as<const char*>());
+                }
+              }
+            } else {
+              // no previous step in this leg; try previous leg's last step
+              // (not implemented here for brevity; could be added)
+            }
+            return true; // we return the first boarding found for this route
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback: loose scan inside routeVariant for a type-5 element and pair with nearest preceding distance/duration in the same parent array
+  // This is less precise but helps when structure differs.
+  // We'll recursively search arrays and when we find a type-5 element, we look backward in that array for distance/duration.
+  std::function<bool(JsonVariant&)> recursiveScan;
+  recursiveScan = [&](JsonVariant &node) -> bool {
+    if (node.is<JsonArray>()) {
+      JsonArray arr = node.as<JsonArray>();
+      for (size_t idx = 0; idx < arr.size(); ++idx) {
+        JsonVariant elem = arr[idx];
+        JsonVariant type5Elem;
+        if (stepContainsType5(elem, type5Elem)) {
+          out.busLabel = extractLabelFromType5(type5Elem);
+          // try to find first stop inside elem
+          JsonVariant firstStop;
+          if (findFirstStopInTransitStep(elem, firstStop)) {
+            if (firstStop[0].is<const char*>()) out.stationName = String((const char*)firstStop[0]);
+            if (firstStop[2].is<JsonArray>()) out.nextBusTime = extractHumanTimeFromDepartureArray(firstStop[2]);
+          }
+          // search backward in same array for distance/duration
+          for (int j = int(idx) - 1; j >= 0; --j) {
+            JsonVariant cand = arr[j];
+            if (isDistanceArray(cand) && out.walkDistance.length() == 0) {
+              out.walkDistance = String((const char*)cand[1].as<const char*>());
+            }
+            if (isDurationArray(cand) && out.walkTime.length() == 0) {
+              out.walkTime = String((const char*)cand[1].as<const char*>());
+            }
+            if (out.walkDistance.length() && out.walkTime.length()) break;
+          }
+          return true;
+        }
+        // recurse
+        if (elem.is<JsonArray>() || elem.is<JsonObject>()) {
+          if (recursiveScan(elem)) return true;
+        }
+      }
+    } else if (node.is<JsonObject>()) {
+      for (JsonPair kv : node.as<JsonObject>()) {
+        JsonVariant v = kv.value();
+        if (v.is<JsonArray>() || v.is<JsonObject>()) {
+          if (recursiveScan(v)) return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  JsonVariant rv = routeVariant;
+  if (recursiveScan(rv)) return true;
+
+  return false;
+}
+
+String extractJsonPart(const String &raw) {
+  int startObj = raw.indexOf('{');
+  int startArr = raw.indexOf('[');
+  int start = -1;
+  if (startObj >= 0 && (startObj < startArr || startArr == -1)) start = startObj;
+  else start = startArr;
+  if (start == -1) return String();
+
+  int endObj = raw.lastIndexOf('}');
+  int endArr = raw.lastIndexOf(']');
+  int end = max(endObj, endArr);
+  if (end == -1 || end < start) return String();
+  return raw.substring(start, end + 1);
+}
+
+String extractJsonPartDirections(const String &raw) {
+  int len = raw.length();
+  int i = 0;
+  while (i < len) {
+    char c = raw.charAt(i);
+    if (c == '{' || c == '[') break;
+    ++i;
+  }
+  if (i >= len) return String();
+  dbgSerial->println("extractJsonPartDirections: found JSON start at index " + String(i));
+  return raw.substring(i, raw.length());
+}
+
+// Returns the index of the matching closing '}' or ']' for the JSON that starts at `start`.
+// Returns -1 if no matching end is found (incomplete JSON).
+int findJsonEnd(const String &s, int start) {
+  if (start < 0 || start >= s.length()) return -1;
+  char opener = s.charAt(start);
+  if (opener != '{' && opener != '[') return -1;
+
+  bool inString = false;
+  bool escape = false;
+  int depth = 0;
+
+  for (int i = start; i < s.length(); ++i) {
+    char c = s.charAt(i);
+
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (c == '\\') {
+        escape = true;
+      } else if (c == '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (c == '"') {
+      inString = true;
+      continue;
+    }
+
+    if (c == '{' || c == '[') {
+      ++depth;
+      continue;
+    }
+
+    if (c == '}' || c == ']') {
+      --depth;
+      if (depth == 0) {
+        return i; // found the matching end
+      }
+    }
+  }
+
+  // Reached end of string without closing all openers
+  return -1;
+}
+
+String extractJsonPartSafe(const String &raw) {
+  // find first opener
+  int start = 0;
+  while (start < raw.length() && raw.charAt(start) != '{' && raw.charAt(start) != '[') ++start;
+  if (start >= raw.length()) return String();
+
+  int endIndex = findJsonEnd(raw, start);
+  if (endIndex < 0) return String(); // incomplete JSON
+
+  // Prefer parsing in-place: return pointer/length to deserializeJson
+  // If you must return a String, copy once using malloc+memcpy (safer than many substrings)
+  int totalLen = endIndex - start + 1;
+  char *buf = (char*)malloc((size_t)totalLen + 1);
+  if (!buf) return String(); // allocation failed
+  memcpy(buf, raw.c_str() + start, (size_t)totalLen);
+  buf[totalLen] = '\0';
+  String out = String(buf);
+  free(buf);
+  return out;
+}
+
+String extractJsonPartChunked(const String &raw) {
+  int len = raw.length();
+  int start = 0;
+  while (start < len && raw.charAt(start) != '{' && raw.charAt(start) != '[') ++start;
+  if (start >= len) return String();
+
+  // Reserve a reasonable amount to reduce fragmentation
+  String out;
+  out.reserve(min(65536, len - start)); // tune as needed
+
+  // Append in chunks
+  const int CHUNK = 4096;
+  for (int pos = start; pos < len; pos += CHUNK) {
+    int end = min(len, pos + CHUNK);
+    out += raw.substring(pos, end);   // smaller allocations
+  }
+  return out;
+}
+
+
+// ptr: pointer to the JSON start (body.c_str() + start)
+// len: length of the JSON slice (endIndex - start + 1)
+// dbgSerial: your debug Serial instance (e.g., &Serial)
+
+void debugPtrSlice(Stream &dbgSerial, const char *ptr, size_t len) {
+  if (!ptr || len == 0) {
+    dbgSerial.println("ptr is null or len == 0");
+    return;
+  }
+
+  // 1) Basic info
+  dbgSerial.print("ptr slice length = ");
+  dbgSerial.println((unsigned long)len);
+
+  // 2) First and last byte values (print as ints)
+  dbgSerial.print("first byte (char) = ");
+  dbgSerial.print((int)ptr[0]);
+  dbgSerial.print("  first char = ");
+  dbgSerial.println(ptr[0]); // may be non-printable
+
+  dbgSerial.print("last byte (char) = ");
+  dbgSerial.print((int)ptr[len - 1]);
+  dbgSerial.print("  last char = ");
+  dbgSerial.println(ptr[len - 1]); // may be non-printable
+
+  // 3) Print a safe HEAD (first N bytes) using write to avoid building Strings
+  const size_t HEAD_N = min((size_t)200, len);
+  dbgSerial.println("---- HEAD ----");
+  dbgSerial.write(ptr, HEAD_N);   // raw write of bytes
+  dbgSerial.println();           // newline after raw bytes
+
+  // 4) Print a safe TAIL (last N bytes)
+  const size_t TAIL_N = min((size_t)200, len);
+  dbgSerial.println("---- TAIL ----");
+  dbgSerial.write(ptr + (len - TAIL_N), TAIL_N);
+  dbgSerial.println();
+
+  // 5) Byte dump for the first M bytes (numeric values)
+  dbgSerial.println("---- BYTE DUMP (first 80 bytes) ----");
+  size_t dumpN = min((size_t)80, len);
+  for (size_t i = 0; i < dumpN; ++i) {
+    dbgSerial.print(i);
+    dbgSerial.print(":");
+    dbgSerial.print((int)(unsigned char)ptr[i]);
+    dbgSerial.print(" ");
+  }
+  dbgSerial.println();
+
+  // 6) Quick sanity checks for JSON start/end characters
+  dbgSerial.print("starts with: ");
+  dbgSerial.println(ptr[0] == '[' ? "[" : (ptr[0] == '{' ? "{" : "other"));
+  dbgSerial.print("ends with: ");
+  dbgSerial.println(ptr[len - 1] == ']' ? "]" : (ptr[len - 1] == '}' ? "}" : "other"));
+
+  // 7) Optional: check for embedded NULs in the slice (rare but problematic)
+  bool foundNull = false;
+  for (size_t i = 0; i < len; ++i) {
+    if (ptr[i] == '\0') { foundNull = true; dbgSerial.print("NUL at index "); dbgSerial.println((unsigned long)i); break; }
+  }
+  if (!foundNull) dbgSerial.println("no embedded NUL found in slice");
+
+  // 8) If you want to print the whole slice in safe chunks (avoid one huge write)
+  dbgSerial.println("---- FULL SLICE (chunked) ----");
+  const size_t CHUNK = 1024;
+  size_t pos = 0;
+  while (pos < len) {
+    size_t chunk = min(CHUNK, len - pos);
+    dbgSerial.write(ptr + pos, chunk);
+    pos += chunk;
+    // optional small delay if serial buffer is small:
+    // delay(5);
+  }
+  dbgSerial.println();
+}
+
+
+
+
+// Public API: parse JSON body and fill an array of BoardingInfo
+int parseBoardingInfos(const String &body, BoardingInfo results[], int maxResults) {
+  // String jsonPart = extractJsonPartSafe(body); //extractJsonPartChunked(body); //extractJsonPartDirections(body);
+  // int start = 11; /* index of first '{' or '[' */
+  // int endIndex = findJsonEnd(body, start);
+  int startObj = body.indexOf('{');
+  int startArr = body.indexOf('[');
+  int start = -1;
+  if (startObj >= 0 && (startObj < startArr || startArr == -1)) start = startObj;
+  else start = startArr;
+
+  int endObj = body.lastIndexOf('}');
+  int endArr = body.lastIndexOf(']');
+  int endIndex = max(endObj, endArr);
+  // if (endIndex >= 0 == false) {
+  //   return -1;
+  // }
+
+  const char *ptr = body.c_str() + start;
+  size_t len = (size_t)(endIndex - start + 1);
+  // DynamicJsonDocument doc(capacity);
+  
+  // handle err...
+
+  // dbgSerial->println("jsonPart " + String(jsonPart.length()) + " chars");
+  // if (jsonPart.length() == 0) {
+  //   dbgSerial->println("No JSON found in body");
+  //   return 0;
+  // }
+
+  // dbgSerial->print("first char: "); dbgSerial->println((int)body.charAt(0));
+  // dbgSerial->print("last char: ");  dbgSerial->println((int)body.charAt(body.length()-1));
+
+  // // // 2) Print small head and tail (safe)
+  // dbgSerial->println("HEAD: " + body.substring(0, min(200, int(body.length()))));
+  // dbgSerial->println("TAIL: " + body.substring(max(0, int(body.length()-200)), body.length()));
+
+  // debugPtrSlice(*dbgSerial, ptr, len);
+  
+  // Adjust capacity to your payload size
+  const size_t capacity = 200000; // increase if needed
+  DynamicJsonDocument doc(capacity);
+  // JsonDocument doc;
+  // DeserializationError err = deserializeJson(doc, jsonPart);
+  dbgSerial->print("ptr non-null? "); dbgSerial->println(ptr != nullptr);
+  dbgSerial->print("len = "); dbgSerial->println((unsigned long)len);
+  DeserializationError err = deserializeJson(doc, ptr, len, DeserializationOption::NestingLimit(200));
+
+  if (err) {
+    dbgSerial->print("JSON parse failed: ");
+    dbgSerial->println(err.c_str());
+    return 0;
+  }
+
+  JsonVariant root = doc.as<JsonVariant>();
+  int found = 0;
+
+  // Try canonical path: root["routes"]
+  if (root.is<JsonObject>() && root.containsKey("routes")) {
+    JsonArray routes = root["routes"].as<JsonArray>();
+    for (JsonVariant route : routes) {
+      if (found >= maxResults) break;
+      BoardingInfo info;
+      if (extractBoardingFromRoute(route, info)) {
+        results[found++] = info;
+      }
+    }
+    return found;
+  }
+
+  // If no "routes" key, try scanning top-level array for route-like objects
+  if (root.is<JsonArray>()) {
+    for (JsonVariant candidate : root.as<JsonArray>()) {
+      if (found >= maxResults) break;
+      BoardingInfo info;
+      if (extractBoardingFromRoute(candidate, info)) {
+        results[found++] = info;
+      }
+    }
+    return found;
+  }
+
+  // As a last resort, try the whole document as a single route
+  BoardingInfo info;
+  if (extractBoardingFromRoute(root, info)) {
+    if (found < maxResults) results[found++] = info;
+  }
+  return found;
+}
+
+
+
+
+
+
 // --- Heuristic helpers to detect coordinates and names ---
 bool isValidLatLon(double a, double b) {
   return (a >= -90.0 && a <= 90.0 && b >= -180.0 && b <= 180.0); //latitude, longitude ranges
@@ -225,20 +706,6 @@ void searchForPatterns(JsonVariant v, Place places[], int &count, int maxPlaces)
   // primitives: nothing to do
 }
 
-String extractJsonPart(const String &raw) {
-  int startObj = raw.indexOf('{');
-  int startArr = raw.indexOf('[');
-  int start = -1;
-  if (startObj >= 0 && (startObj < startArr || startArr == -1)) start = startObj;
-  else start = startArr;
-  if (start == -1) return String();
-
-  int endObj = raw.lastIndexOf('}');
-  int endArr = raw.lastIndexOf(']');
-  int end = max(endObj, endArr);
-  if (end == -1 || end < start) return String();
-  return raw.substring(start, end + 1);
-}
 
 
 // --- Parse function: extract JSON, parse, search, return count ---
@@ -604,27 +1071,45 @@ int getPlaces(String searchQuery, Place places[], int maxPlaces) {
   return count;
 }
 
+BoardingInfo infos[MAX_RESULTS];
 
-int getDirections(String searchQuery, String start, String end) {
+void getDirections(String start, String end) {
   start.replace(" ", "+");
   start.replace(",", "%2C");
   end.replace(" ", "+");
   end.replace(",", "%2C");
   String url = "https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s" + start + "!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s" + end + "!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184";
   dbgSerial->println("DirectionsURL: " + url);
-  return 0;
+  // return 0;
   String body = httpGetStream(url);
-  logMessage("Response length: " + String(body.length()));
+  logMessage("Directions response length: " + String(body.length()));
+  // dbgSerial->println("Directions response: " + body.substring(0, min(200, int(body.length())))); // print first 200 chars
+
+  int n = parseBoardingInfos(body, infos, MAX_RESULTS);
+
+  dbgSerial->print("Found ");
+  dbgSerial->print(n);
+  dbgSerial->println(" boarding entries:");
+  for (int i = 0; i < n; ++i) {
+    dbgSerial->println("---");
+    dbgSerial->print("Bus: "); dbgSerial->println(infos[i].busLabel);
+    dbgSerial->print("Walk distance: "); dbgSerial->println(infos[i].walkDistance);
+    dbgSerial->print("Walk time: "); dbgSerial->println(infos[i].walkTime);
+    dbgSerial->print("Station: "); dbgSerial->println(infos[i].stationName);
+    dbgSerial->print("Next bus: "); dbgSerial->println(infos[i].nextBusTime);
+  }
+
+
   // dbgSerial->println(body); // or parse it
   
   
-  int count = parsePlacesFromBody(body, places, MAX_RESULTS);
+  // int count = parsePlacesFromBody(body, places, MAX_RESULTS);
 
-  dbgSerial->printf("Found %d places:\n", count);
-  for (int i = 0; i < count; ++i) {
-    dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
-  }
-  return count;
+  // dbgSerial->printf("Found %d places:\n", count);
+  // for (int i = 0; i < count; ++i) {
+  //   dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
+  // }
+  // return count;
 }
 
 
@@ -748,13 +1233,16 @@ void setup() {
 
     dbgSerial->println("\nWiFi connected");
 
+    // SEARCH QUERY SEQUENCE
     // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Tw&ech=7&pb=!2i2!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i1298!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sAvghab7tBdbV5NoP9PqxgQ0!7e81!17sAvghab7tBdbV5NoP9PqxgQ0%3A83!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i759"; // example (fragile)
-    searchQuery = "434";
+    // searchQuery = "434";
     // placesCount = getPlaces(searchQuery, places, MAX_RESULTS);
 
+
+    // DIRECTIONS SEQUENCE
     locals.startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
     locals.endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
-    int count = getDirections("434 to waterfront", locals.startAddr, locals.endAddr);
+    getDirections(locals.startAddr, locals.endAddr);
 
 
     
