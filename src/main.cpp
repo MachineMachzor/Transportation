@@ -22,7 +22,10 @@
 Preferences prefs;
 const bool TESTING_NEXTION = true; //If false, should be production nextion
 const bool FAKE_WIFI = false; //If true, always go to no wifi page for testing
-const bool SKIP_WIFI_LOGIN = false;
+
+
+const bool SKIP_WIFI_SELECTION = true;
+const bool SKIP_WIFI_LOGIN = true;
 
 /*
 // FULL TESTING OF NEXTION
@@ -129,7 +132,7 @@ std::map<int, String> HOME_PAGE_END_BUTTONS = {
     {15, "b7"},
 };
 
-const int HOME_PAGE_START_TXT_ID = 3; //t2
+const String HOME_PAGE_START_TXT = "t2"; //t2
 const int HOME_PAGE_START_SELECTED_ID = 8; //Selected start location
 const int HOME_PAGE_END_TXT_ID = 5;   //t4
 const int HOME_PAGE_END_SELECTED_ID = 9; //Selected end location
@@ -1338,17 +1341,22 @@ void setup() {
     connected = false;
   }
   if (!connected) {
-    buttonText bt = SelectWifi();
-    String text = bt.text;
-    int compId = bt.compId;
-    
-    // After selecting wifi, go to the next page
-    sendCommand("page WifiInput");
-    
-    if (text != "Unlisted") {
-      // ssidTest = (char*)text.c_str();
-      sendCommand("t2.txt=\"" + text + "\""); // set SSID field
+    int compId = -1;
+    if (!SKIP_WIFI_SELECTION) {
+      buttonText bt = SelectWifi();
+      String text = bt.text;
+      compId = bt.compId;
+      
+      // After selecting wifi, go to the next page
+      sendCommand("page WifiInput");
+      
+      if (text != "Unlisted") {
+        // ssidTest = (char*)text.c_str();
+        sendCommand("t2.txt=\"" + text + "\""); // set SSID field
+      }
+
     }
+    
 
 
     compId = -1;
@@ -1405,6 +1413,19 @@ void setup() {
     locals.startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
     locals.endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
     getDirections(locals.startAddr, locals.endAddr);
+
+    String startText;
+    String endText;
+    String chosenStart;
+    String chosenEnd;
+    while (startText.length() == 0) {
+      // buttonText btStart = GetStartAddress();
+      sendCommand("get " + HOME_PAGE_START_TXT + ".txt");
+      startText = getButtonText(*nextionSerial);
+    }
+    logMessage("Start text: " + startText);
+    // sendCommand("get " + NO_WIFI_PAGE_MAP[compId] + ".txt");
+    // text = getButtonText(*nextionSerial); // flush any prior response
 
 
     
