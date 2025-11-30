@@ -560,75 +560,117 @@ static String extractQuoted(const String &s, int &i) {
 
 // Try to parse a station block at index i. If found, push a Station and return new index (> i).
 // Station pattern expected: ["Stop Name", "12345", [epoch, "TZ", "human time", ...], ...]
+// Try to parse a station block at index i. If found, push a Station and return new index (> i).
+// Station pattern expected: ["Stop Name", "12345", [epoch, "TZ", "human time", ...], ...]
 static int tryStationBlock(const String &body, int i, std::vector<Station> &stations) {
   int n = body.length();
   int orig = i;
   i = skipSpaces(body, i);
-  if (i >= n || body.charAt(i) != '[') return orig;
-  int j = i + 1;
-  j = skipSpaces(body, j);
-  if (j >= n || body.charAt(j) != '"') return orig;
+  if (i >= n || body.charAt(i) != '[') return orig;    // not a station block
 
-  int q = j;
+  int p = i + 1;
+  p = skipSpaces(body, p);
+  if (p >= n || body.charAt(p) != '"') return orig;
+
+  // extract stop name
+  int q = p;
   String stopName = extractQuoted(body, q);
   if (stopName.length() == 0) return orig;
-  j = skipSpaces(body, q);
-  if (j >= n || body.charAt(j) != ',') return orig;
-  j = skipSpaces(body, j + 1);
-  if (j >= n || body.charAt(j) != '"') return orig;
-  int q2 = j;
-  String stopId = extractQuoted(body, q2);
-  if (stopId.length() == 0) return orig;
-  j = skipSpaces(body, q2);
-  if (j >= n || body.charAt(j) != ',') return orig;
-  j = skipSpaces(body, j + 1);
-  if (j >= n || body.charAt(j) != '[') return orig;
+  p = skipSpaces(body, q);
+  if (p >= n || body.charAt(p) != ',') {
+    // push minimal station and return
+    Station s; s.pos = (unsigned long)i; s.name = stopName; s.humanTime = String();
+    stations.push_back(s);
+    return q;
+  }
 
-  int k = j + 1;
-  long epoch = parseNumber(body, k);
-  if (epoch < 0) {
-    // still record stop name even if nested array not as expected
-    Station s; s.pos = (unsigned long)i; s.name = stopName; s.humanTime = String();
-    stations.push_back(s);
-    return q2;
+  // extract stop id (quoted) - advance but we don't require it
+  p = skipSpaces(body, p + 1);
+  if (p < n && body.charAt(p) == '"') {
+    int q2 = p;
+    String stopId = extractQuoted(body, q2);
+    p = skipSpaces(body, q2);
   }
-  k = skipSpaces(body, k);
-  if (k >= n || body.charAt(k) != ',') {
-    Station s; s.pos = (unsigned long)i; s.name = stopName; s.humanTime = String();
-    stations.push_back(s);
-    return q2;
+
+  // Now scan forward until the closing ']' of this station block.
+  // While scanning, try to capture a nested time array's human time: [ epoch, "TZ", "human time", ... ]
+  String humanTime;
+  int idx = p;
+  int depth = 0;
+  bool inNested = false;
+
+  while (idx < n) {
+    idx = skipSpaces(body, idx);
+    char c = body.charAt(idx);
+    if (c == '[') {
+      // attempt to parse nested time array starting here
+      int t = idx + 1;
+      t = skipSpaces(body, t);
+      long maybeEpoch = parseNumber(body, t);
+      if (maybeEpoch >= 0) {
+        // look for comma then quoted tz then comma then quoted human time
+        t = skipSpaces(body, t);
+        if (t < n && body.charAt(t) == ',') {
+          t = skipSpaces(body, t + 1);
+          if (t < n && body.charAt(t) == '"') {
+            int qtz = t;
+            String tz = extractQuoted(body, qtz);
+            if (tz.length() > 0) {
+              int t2 = skipSpaces(body, qtz);
+              if (t2 < n && body.charAt(t2) == ',') {
+                int t3 = skipSpaces(body, t2 + 1);
+                if (t3 < n && body.charAt(t3) == '"') {
+                  int qhuman = t3;
+                  String h = extractQuoted(body, qhuman);
+                  if (h.length() > 0) {
+                    humanTime = h;
+                    // advance idx to after this nested array's closing bracket
+                    idx = qhuman;
+                    while (idx < n && body.charAt(idx) != ']') ++idx;
+                    if (idx < n && body.charAt(idx) == ']') ++idx;
+                    continue;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // if not recognized as time array, skip nested array (balance brackets)
+      int depthNested = 1;
+      int j = idx + 1;
+      while (j < n && depthNested > 0) {
+        if (body.charAt(j) == '[') ++depthNested;
+        else if (body.charAt(j) == ']') --depthNested;
+        ++j;
+      }
+      idx = j;
+      continue;
+    } else if (c == ']') {
+      // end of station block
+      ++idx;
+      Station s;
+      s.pos = (unsigned long)i;
+      s.name = stopName;
+      s.humanTime = humanTime; // may be empty
+      stations.push_back(s);
+      return idx; // index just after closing ']'
+    } else {
+      ++idx;
+    }
   }
-  k = skipSpaces(body, k + 1);
-  if (k >= n || body.charAt(k) != '"') {
-    Station s; s.pos = (unsigned long)i; s.name = stopName; s.humanTime = String();
-    stations.push_back(s);
-    return q2;
-  }
-  int q3 = k;
-  String tz = extractQuoted(body, q3);
-  if (tz.length() == 0) {
-    Station s; s.pos = (unsigned long)i; s.name = stopName; s.humanTime = String();
-    stations.push_back(s);
-    return q3;
-  }
-  k = skipSpaces(body, q3);
-  if (k >= n || body.charAt(k) != ',') {
-    Station s; s.pos = (unsigned long)i; s.name = stopName; s.humanTime = String();
-    stations.push_back(s);
-    return q3;
-  }
-  k = skipSpaces(body, k + 1);
-  if (k >= n || body.charAt(k) != '"') {
-    Station s; s.pos = (unsigned long)i; s.name = stopName; s.humanTime = String();
-    stations.push_back(s);
-    return q3;
-  }
-  int q4 = k;
-  String humanTime = extractQuoted(body, q4);
-  Station s; s.pos = (unsigned long)i; s.name = stopName; s.humanTime = humanTime;
+
+  // If we reach here, no closing ']' found; push what we have and return end
+  Station s;
+  s.pos = (unsigned long)i;
+  s.name = stopName;
+  s.humanTime = humanTime;
   stations.push_back(s);
-  return q4;
+  return n;
 }
+
+// Station s; s.pos = (unsigned long)i; s.name = stopName; s.humanTime = humanTime;
 
 // Scan the body and collect matches for:
 // - routes: nested [code, ["Label", ...]]
@@ -649,7 +691,7 @@ static void scanBodyManual(const String &body,
     // attempt station block first (starts with '[' then '"')
     if (body.charAt(i) == '[') {
       int newPos = tryStationBlock(body, i, stations);
-      if (newPos != i) { i = newPos; ++i; continue; }
+      if (newPos != i) { i = newPos; continue; }
     }
 
     // look for numeric-coded arrays: [ <code> , ...
@@ -775,10 +817,16 @@ static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &ro
       if (w.pos > rm.pos) { bi.walkTime = w.val; break; }
     }
     // first station after route
+      // first station after route: prefer station that has a humanTime (likely the boarding stop)
     const Station *foundStation = nullptr;
+    const Station *firstAfter = nullptr;
     for (const auto &s : stations) {
-      if (s.pos > rm.pos) { foundStation = &s; break; }
+      if (s.pos > rm.pos) {
+        if (!firstAfter) firstAfter = &s;
+        if (s.humanTime.length() > 0) { foundStation = &s; break; }
+      }
     }
+    if (!foundStation) foundStation = firstAfter;
     if (foundStation) {
       bi.stationName = foundStation->name;
       if (foundStation->humanTime.length() > 0) bi.nextBusTime = foundStation->humanTime;
