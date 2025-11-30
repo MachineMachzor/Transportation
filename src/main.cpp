@@ -854,27 +854,40 @@ static void scanBodyManual(const String &body,
     ++i;
   }
 }
-
-// --- dedupeRoutes helper (removes duplicates and garbage) ---
+// --- dedupeRoutes: keep only the earliest occurrence for each route label (first step) ---
 static std::vector<Match> dedupeRoutes(const std::vector<Match> &routes) {
+  // Map label -> earliest pos
   std::vector<Match> out;
   out.reserve(routes.size());
+
   for (const auto &r : routes) {
     String norm = normalizeLabel(r.val);
     if (norm.length() == 0) continue;
-    bool seen = false;
-    for (const auto &o : out) {
-      if (o.pos == r.pos && o.val == norm) { seen = true; break; }
+
+    // find existing entry for this label
+    bool found = false;
+    for (auto &existing : out) {
+      if (existing.val == norm) {
+        found = true;
+        // keep the earliest (smallest) pos
+        if (r.pos < existing.pos) existing.pos = r.pos;
+        break;
+      }
     }
-    if (!seen) {
+    if (!found) {
       Match m; m.pos = r.pos; m.val = norm;
       out.push_back(m);
     }
   }
+
+  // Sort by position so results are in document order (earliest first)
+  std::sort(out.begin(), out.end(), [](const Match &a, const Match &b) {
+    return a.pos < b.pos;
+  });
+
   return out;
 }
-
-// --- groupBoardingInfos (improved matching, avoids duplicates) ---
+// --- groupBoardingInfos: use deduped routes (first step per label) and skip routes with no following station ---
 static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &routes_in,
                                                     const std::vector<Match> &distances,
                                                     const std::vector<Match> &walkTimes,
@@ -883,7 +896,7 @@ static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &ro
                                                     size_t MAX_RESULTS) {
   std::vector<BoardingInfo> out;
 
-  // normalize and dedupe routes
+  // normalize and dedupe routes (earliest occurrence per label)
   std::vector<Match> routes = dedupeRoutes(routes_in);
 
   out.reserve(min((size_t)routes.size(), MAX_RESULTS));
@@ -901,6 +914,14 @@ static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &ro
 
   for (size_t r = 0; r < routes.size() && out.size() < MAX_RESULTS; ++r) {
     const Match &rm = routes[r];
+
+    // Skip this route if there is no station after its position (not a boarding route)
+    bool hasStationAfter = false;
+    for (const auto &s : stations) {
+      if (s.pos > rm.pos) { hasStationAfter = true; break; }
+    }
+    if (!hasStationAfter) continue;
+
     BoardingInfo bi;
     bi.busLabel = rm.val;
 
@@ -966,6 +987,7 @@ static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &ro
 
   return out;
 }
+
 
 // --- Public API: extract up to MAX_RESULTS BoardingInfo entries from body and optionally print debug to dbgSerial. ---
 std::vector<BoardingInfo> extractBoardingInfosManual(const String &body, Stream *dbgSerial, size_t MAX_RESULTS) {
