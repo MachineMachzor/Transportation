@@ -537,6 +537,16 @@ static long parseNumber(const String &s, int &i) {
   return found ? val : -1;
 }
 
+
+// Return true if the label looks like a transit route (contains at least one digit).
+static bool isTransitRouteLabel(const String &label) {
+  for (int k = 0; k < label.length(); ++k) {
+    char c = label.charAt(k);
+    if (c >= '0' && c <= '9') return true;
+  }
+  return false;
+}
+
 // Extract a quoted string starting at index i (i points at opening quote).
 // Advances i to the character after the closing quote. Returns empty String if no closing quote.
 static String extractQuoted(const String &s, int &i) {
@@ -564,8 +574,6 @@ static String extractQuoted(const String &s, int &i) {
   return String();
 }
 
-// Try to parse a station block at index i. If found, push a Station and return new index (> i).
-// Station pattern expected: ["Stop Name", "12345", [epoch, "TZ", "human time", ...], ...]
 // Try to parse a station block at index i. If found, push a Station and return new index (> i).
 // Station pattern expected: ["Stop Name", "12345", [epoch, "TZ", "human time", ...], ...]
 static int tryStationBlock(const String &body, int i, std::vector<Station> &stations) {
@@ -740,8 +748,13 @@ static void scanBodyManual(const String &body,
               int q = inner;
               String label = extractQuoted(body, q);
               if (label.length() > 0) {
-                Match m; m.pos = (unsigned long)p; m.val = label;
-                routes.push_back(m);
+                // Only treat this quoted label as a route if it looks like a transit route (contains a digit).
+                if (isTransitRouteLabel(label)) {
+                  Match m; m.pos = (unsigned long)p; m.val = label;
+                  routes.push_back(m);
+                } else {
+                  // not a transit route label; ignore as route (it will still be parsed elsewhere if needed)
+                }
                 i = q;
                 ++i;
                 continue;
