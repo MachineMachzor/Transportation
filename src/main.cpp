@@ -498,10 +498,16 @@ struct Match {
 
 
 struct Station {
-  unsigned long pos;
+  unsigned long pos = 0;
   String name;
-  String humanTime;
+  String humanTime;        // chosen next time (human readable)
+  unsigned long epoch = 0; // chosen next epoch
+  // new fields:
+  String scheduledHuman;        // earliest scheduled human time (if present)
+  unsigned long scheduledEpoch = 0;
+  bool delayed = false;        // true if chosen epoch > scheduledEpoch
 };
+
 
 // Helpers
 static int skipSpaces(const String &s, int i) {
@@ -566,7 +572,7 @@ static int tryStationBlock(const String &body, int i, std::vector<Station> &stat
   int n = body.length();
   int orig = i;
   i = skipSpaces(body, i);
-  if (i >= n || body.charAt(i) != '[') return orig;    // not a station block
+  if (i >= n || body.charAt(i) != '[') return orig;
 
   int p = i + 1;
   p = skipSpaces(body, p);
@@ -577,30 +583,28 @@ static int tryStationBlock(const String &body, int i, std::vector<Station> &stat
   String stopName = extractQuoted(body, q);
   if (stopName.length() == 0) return orig;
   p = skipSpaces(body, q);
-  if (p >= n || body.charAt(p) != ',') {
-    // push minimal station and return
-    Station s; s.pos = (unsigned long)i; s.name = stopName; s.humanTime = String();
-    stations.push_back(s);
-    return q;
+  if (p >= n) return orig;
+
+  // advance past stop id if present (we don't require it)
+  if (body.charAt(p) == ',') {
+    p = skipSpaces(body, p + 1);
+    if (p < n && body.charAt(p) == '"') {
+      int q2 = p;
+      (void)extractQuoted(body, q2); // ignore id content, just advance
+      p = skipSpaces(body, q2);
+    }
   }
 
-  // extract stop id (quoted) - advance but we don't require it
-  p = skipSpaces(body, p + 1);
-  if (p < n && body.charAt(p) == '"') {
-    int q2 = p;
-    String stopId = extractQuoted(body, q2);
-    p = skipSpaces(body, q2);
-  }
+  // scan the station block and collect all nested time arrays [ epoch, "TZ", "human time", ... ]
+  unsigned long minEpoch = 0; // earliest (scheduled)
+  unsigned long maxEpoch = 0; // latest (real-time / chosen)
+  String minHuman;
+  String maxHuman;
 
-  // Now scan forward until the closing ']' of this station block.
-  // While scanning, try to capture a nested time array's human time: [ epoch, "TZ", "human time", ... ]
-  String humanTime;
   int idx = p;
-  int depth = 0;
-  bool inNested = false;
-
   while (idx < n) {
     idx = skipSpaces(body, idx);
+    if (idx >= n) break;
     char c = body.charAt(idx);
     if (c == '[') {
       // attempt to parse nested time array starting here
@@ -609,21 +613,30 @@ static int tryStationBlock(const String &body, int i, std::vector<Station> &stat
       long maybeEpoch = parseNumber(body, t);
       if (maybeEpoch >= 0) {
         // look for comma then quoted tz then comma then quoted human time
-        t = skipSpaces(body, t);
-        if (t < n && body.charAt(t) == ',') {
-          t = skipSpaces(body, t + 1);
-          if (t < n && body.charAt(t) == '"') {
-            int qtz = t;
+        int t1 = skipSpaces(body, t);
+        if (t1 < n && body.charAt(t1) == ',') {
+          int t2 = skipSpaces(body, t1 + 1);
+          if (t2 < n && body.charAt(t2) == '"') {
+            int qtz = t2;
             String tz = extractQuoted(body, qtz);
             if (tz.length() > 0) {
-              int t2 = skipSpaces(body, qtz);
-              if (t2 < n && body.charAt(t2) == ',') {
-                int t3 = skipSpaces(body, t2 + 1);
-                if (t3 < n && body.charAt(t3) == '"') {
-                  int qhuman = t3;
-                  String h = extractQuoted(body, qhuman);
-                  if (h.length() > 0) {
-                    humanTime = h;
+              int t3 = skipSpaces(body, qtz);
+              if (t3 < n && body.charAt(t3) == ',') {
+                int t4 = skipSpaces(body, t3 + 1);
+                if (t4 < n && body.charAt(t4) == '"') {
+                  int qhuman = t4;
+                  String human = extractQuoted(body, qhuman);
+                  if (human.length() > 0) {
+                    unsigned long e = (unsigned long)maybeEpoch;
+                    // update min/max
+                    if (minEpoch == 0 || e < minEpoch) {
+                      minEpoch = e;
+                      minHuman = human;
+                    }
+                    if (e > maxEpoch) {
+                      maxEpoch = e;
+                      maxHuman = human;
+                    }
                     // advance idx to after this nested array's closing bracket
                     idx = qhuman;
                     while (idx < n && body.charAt(idx) != ']') ++idx;
@@ -637,7 +650,7 @@ static int tryStationBlock(const String &body, int i, std::vector<Station> &stat
         }
       }
 
-      // if not recognized as time array, skip nested array (balance brackets)
+      // not a recognized time array: skip nested array (balance brackets)
       int depthNested = 1;
       int j = idx + 1;
       while (j < n && depthNested > 0) {
@@ -653,19 +666,34 @@ static int tryStationBlock(const String &body, int i, std::vector<Station> &stat
       Station s;
       s.pos = (unsigned long)i;
       s.name = stopName;
-      s.humanTime = humanTime; // may be empty
+      // choose values: prefer maxEpoch as the "next" time, but keep scheduled (minEpoch) if present
+      if (maxEpoch > 0) {
+        s.epoch = maxEpoch;
+        s.humanTime = maxHuman;
+      }
+      if (minEpoch > 0) {
+        s.scheduledEpoch = minEpoch;
+        s.scheduledHuman = minHuman;
+      }
+      if (s.epoch > 0 && s.scheduledEpoch > 0 && s.epoch > s.scheduledEpoch) {
+        s.delayed = true;
+      } else {
+        s.delayed = false;
+      }
       stations.push_back(s);
-      return idx; // index just after closing ']'
+      return idx;
     } else {
       ++idx;
     }
   }
 
-  // If we reach here, no closing ']' found; push what we have and return end
+  // fallback if no closing bracket found
   Station s;
   s.pos = (unsigned long)i;
   s.name = stopName;
-  s.humanTime = humanTime;
+  if (maxEpoch > 0) { s.epoch = maxEpoch; s.humanTime = maxHuman; }
+  if (minEpoch > 0) { s.scheduledEpoch = minEpoch; s.scheduledHuman = minHuman; }
+  if (s.epoch > 0 && s.scheduledEpoch > 0 && s.epoch > s.scheduledEpoch) s.delayed = true;
   stations.push_back(s);
   return n;
 }
@@ -829,7 +857,15 @@ static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &ro
     if (!foundStation) foundStation = firstAfter;
     if (foundStation) {
       bi.stationName = foundStation->name;
-      if (foundStation->humanTime.length() > 0) bi.nextBusTime = foundStation->humanTime;
+      if (foundStation->humanTime.length() > 0) {
+        bi.nextBusTime = foundStation->humanTime;
+        if (foundStation->delayed && foundStation->scheduledHuman.length() > 0) {
+          // show both: actual next time and the scheduled time it replaced
+          bi.nextBusTime += " (delayed from ";
+          bi.nextBusTime += foundStation->scheduledHuman;
+          bi.nextBusTime += ")";
+        }
+      }
       else {
         // find first departure after station
         for (const auto &dep : departures) {
