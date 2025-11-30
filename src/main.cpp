@@ -1346,8 +1346,6 @@ This is the normal URL to analyze in comparison to find the nested patterns:
 https://www.google.com/maps/dir/434+Shady+Avenue,+Pittsburgh,+PA/400+East+Waterfront+Drive,+Homestead,+PA+15120/@40.4318528,-79.9255915,12z/data=!4m14!4m13!1m5!1m1!1s0x8834f20bad463bcb:0x4104e286b57ee3d5!2m2!1d-79.9221308!2d40.4546065!1m5!1m1!1s0x8834ee236ec7350f:0x73fa84093902b486!2m2!1d-79.9099369!2d40.4120663!3e3?entry=ttu&g_ep=EgoyMDI1MTEyMy4xIKXMDSoASAFQAw%3D%3D
 
 
-Array formatter
-https://alignhash.codeutility.io/
 
 */
 

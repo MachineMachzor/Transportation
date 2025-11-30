@@ -69,3 +69,11 @@ The 5 is an element type code, describing the second item (being a route/line la
 
 
 
+
+Array formatter
+https://alignhash.codeutility.io/
+
+
+
+Quick query call 
+https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s434+Shady+Avenue%2C+Pittsburgh%2C+PA!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m7!1s400+E+Waterfront+Dr%2C+Homestead%2C+PA+15120!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!6e0!19sChIJDzXHbiPuNIgRhrQCOQmE-nM!3m15!1m3!1d44796.9728104664!2d-79.91925730000006!3d40.42916315!2m3!1f0!2f0!3f0!3m2!1i580!2i708!4f13.1!6m2!1f0!2f0!6m49!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m19!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!263b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1sd2UsaYXPE6bl5NoP7P_iuAQ!4m1!2i10305!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIIXUsDthXAPz52fZECCAfR1RbUthA%3A1764517185053
