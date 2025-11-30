@@ -888,6 +888,10 @@ static std::vector<Match> dedupeRoutes(const std::vector<Match> &routes) {
   return out;
 }
 // --- groupBoardingInfos: use deduped routes (first step per label) and skip routes with no following station ---
+// --- groupBoardingInfos (updated) ---
+// Uses dedupeRoutes (unchanged) and then:
+// 1) picks the station with the smallest positive (s.pos - rm.pos) distance, preferring stations with humanTime
+// 2) after building the list, removes entries that duplicate stationName+nextBusTime (keep first)
 static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &routes_in,
                                                     const std::vector<Match> &distances,
                                                     const std::vector<Match> &walkTimes,
@@ -896,7 +900,7 @@ static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &ro
                                                     size_t MAX_RESULTS) {
   std::vector<BoardingInfo> out;
 
-  // normalize and dedupe routes (earliest occurrence per label)
+  // normalize and dedupe routes (keep earliest occurrence per label)
   std::vector<Match> routes = dedupeRoutes(routes_in);
 
   out.reserve(min((size_t)routes.size(), MAX_RESULTS));
@@ -909,19 +913,8 @@ static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &ro
     return String();
   };
 
-  // used set to avoid duplicate (label, station, next) triples
-  std::vector<String> usedKeys;
-
   for (size_t r = 0; r < routes.size() && out.size() < MAX_RESULTS; ++r) {
     const Match &rm = routes[r];
-
-    // Skip this route if there is no station after its position (not a boarding route)
-    bool hasStationAfter = false;
-    for (const auto &s : stations) {
-      if (s.pos > rm.pos) { hasStationAfter = true; break; }
-    }
-    if (!hasStationAfter) continue;
-
     BoardingInfo bi;
     bi.busLabel = rm.val;
 
@@ -934,16 +927,33 @@ static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &ro
       if (w.pos > rm.pos) { bi.walkTime = w.val; break; }
     }
 
-    // first station after route: prefer station that has a humanTime (likely the boarding stop)
-    const Station *firstAfter = nullptr;
+    // --- Improved station selection: choose station with smallest positive delta (s.pos - rm.pos)
     const Station *bestStation = nullptr;
+    unsigned long bestDelta = 0; // smallest positive delta
+    const Station *fallbackFirstAfter = nullptr;
+    unsigned long firstAfterDelta = 0;
+
     for (const auto &s : stations) {
-      if (s.pos > rm.pos) {
-        if (!firstAfter) firstAfter = &s;
-        if (s.humanTime.length() > 0 || s.epoch > 0) { bestStation = &s; break; }
+      if (s.pos <= rm.pos) continue;
+      unsigned long delta = s.pos - rm.pos;
+      if (!fallbackFirstAfter) { fallbackFirstAfter = &s; firstAfterDelta = delta; }
+      // prefer stations that have humanTime; among those pick smallest delta
+      if (s.humanTime.length() > 0 || s.epoch > 0) {
+        if (!bestStation || delta < bestDelta) {
+          bestStation = &s;
+          bestDelta = delta;
+        }
+      } else {
+        // if no bestStation yet, consider this as candidate only if it's closer than fallback
+        if (!bestStation && fallbackFirstAfter && delta < firstAfterDelta) {
+          // update fallbackFirstAfter to this closer station without humanTime
+          fallbackFirstAfter = &s;
+          firstAfterDelta = delta;
+        }
       }
     }
-    if (!bestStation) bestStation = firstAfter;
+
+    if (!bestStation) bestStation = fallbackFirstAfter;
 
     if (bestStation) {
       bi.stationName = bestStation->name;
@@ -968,24 +978,23 @@ static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &ro
       }
     }
 
-    // Build a uniqueness key to avoid duplicates: label|station|next
-    String key = bi.busLabel;
-    key += "|";
-    key += bi.stationName;
-    key += "|";
-    key += bi.nextBusTime;
-
-    bool already = false;
-    for (const auto &k : usedKeys) {
-      if (k == key) { already = true; break; }
-    }
-    if (already) continue; // skip duplicate entry
-
-    usedKeys.push_back(key);
     out.push_back(bi);
   }
 
-  return out;
+  // --- Post-filter: remove entries that duplicate stationName + nextBusTime (keep first)
+  std::vector<BoardingInfo> filtered;
+  filtered.reserve(out.size());
+  for (const auto &b : out) {
+    bool dup = false;
+    for (const auto &f : filtered) {
+      if (f.stationName == b.stationName && f.nextBusTime == b.nextBusTime) { dup = true; break; }
+    }
+    if (!dup) filtered.push_back(b);
+  }
+
+  // limit to MAX_RESULTS (in case filtering changed count)
+  if (filtered.size() > MAX_RESULTS) filtered.resize(MAX_RESULTS);
+  return filtered;
 }
 
 
