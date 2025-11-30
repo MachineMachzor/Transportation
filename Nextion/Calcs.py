@@ -1,8 +1,8 @@
 
 
 screenWidth = 240
-componentWidth = 100
-componentHeight = 50
+componentWidth = 200
+componentHeight = 45
 
 def positionComponentToCenter(screenWidth, componentWidth):
     return (screenWidth - componentWidth) // 2

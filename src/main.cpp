@@ -20,8 +20,15 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = false; //If false, should be production nextion
-const bool FAKE_WIFI = true; //If true, always go to no wifi page for testing
+const bool TESTING_NEXTION = true; //If false, should be production nextion
+const bool FAKE_WIFI = false; //If true, always go to no wifi page for testing
+const bool SKIP_WIFI_LOGIN = false;
+
+/*
+// FULL TESTING OF NEXTION
+const bool TESTING_NEXTION = true; //If false, should be production nextion
+const bool FAKE_WIFI = false; //If true, always go to no wifi page for testing
+*/
 
 Stream *dbgSerial = nullptr;     // for debug output to PC
 Stream *nextionSerial = nullptr; // for Nextion commands
@@ -103,7 +110,8 @@ std::map<int, String> NO_WIFI_PAGE_MAP = {
     {4, "b2"},
     {5, "b3"},
     {6, "b4"},
-    {7, "b5"}
+    {7, "b5"},
+    {8, "b6"} //Refresh button
 };
 
 // std::map<int, String> WIFI_INPUT_MAP = {
@@ -165,7 +173,7 @@ String httpGetStream(const String &url) {
 }
 String logBuffer = "";
 static std::vector<String> logLines;  
-static int holdMessageCount = 8;  // holds up to N messages
+static int holdMessageCount = 100; //8;  // holds up to N messages
 
 void logMessage(const String& msg) {
   logBuffer = "";
@@ -346,10 +354,17 @@ std::vector<String> connectionSequence() {
 }
 
 
-void sendComponentTxt(int btnCount, int txtTruncateLength, std::vector<String> txtList, String componentType="b") {
+void sendComponentTxt(int btnCount, int txtTruncateLength, std::vector<String> txtList, String componentType="b", bool loading=false) {
   // b = btn, t = txt
   for (size_t i = 0; i < min(btnCount, int(txtList.size())); ++i) {
-    String txt = txtList[i];
+    String txt = "";
+    if (!loading) {
+      txt = txtList[i];
+    }
+    else {
+      txt = "Loading...";
+    }
+    
     if (txt.length() > txtTruncateLength) {
       txt = txt.substring(0, txtTruncateLength); // truncate if too long
     }
@@ -379,7 +394,7 @@ buttonText SelectWifi() {
   logMessage("Scanned wifi networks:\n" + joinWithNewline(wifiList));
   int compId = -1;
   String text = "";
-  while (compId == -1 || text.length() == 0 || text == "Loading...") {
+  while (compId == -1 || compId == 8 || text.length() == 0 || text == "Loading...") {
     logMessage("Waiting for button press during wifi selection...");
     compId = waitForButtonPress(*nextionSerial, 10000);
     logMessage("Button pressed, compId: " + String(compId));
@@ -399,6 +414,13 @@ buttonText SelectWifi() {
       logMessage("No text received from Nextion for selected wifi.");
     } else {
       logMessage("Selected wifi SSID: " + text);
+    }
+    if (compId == 8) {
+      logMessage("Refresh button pressed, rescanning wifi networks...");
+      sendComponentTxt(5, 20, wifiList, "b", true);
+      wifiList = connectionSequence();
+      sendComponentTxt(5, 20, wifiList, "b"); // send first 5 networks to buttons, truncate to 20 chars
+      logMessage("Rescanned wifi networks:\n" + joinWithNewline(wifiList));
     }
   }
 
@@ -1159,12 +1181,6 @@ int parsePlacesFromBody(const String &body, Place places[], int maxPlaces) {
 }
 
 
-
-
-
-
-
-
 int getPlaces(String searchQuery, Place places[], int maxPlaces) {
   searchQuery.replace(" ", "+");
   searchQuery.replace(",", "%2C");
@@ -1296,7 +1312,9 @@ void setup() {
   
   // Send command to Nextion to show wifi networks
 
-  // connected = false;
+  if (TESTING_NEXTION) {
+    connected = false;
+  }
   if (!connected) {
     buttonText bt = SelectWifi();
     String text = bt.text;
@@ -1317,14 +1335,22 @@ void setup() {
     creds = WifiCredentials();
     buttonText wl;
 
-    while (!creds.ok) {
-      wl = WifiLogin();
-      creds.ok = wl.connected;
-    }
+    if (!SKIP_WIFI_LOGIN) {
+      while (!creds.ok) {
+        wl = WifiLogin();
+        creds.ok = wl.connected;
+      }
 
-    username = wl.ssid;
-    password = wl.pass;
-    creds.ok = wl.connected;
+      username = wl.ssid;
+      password = wl.pass;
+      creds.ok = wl.connected;
+
+      
+    } else {
+      creds.ssid = ssidTest;
+      creds.pass = passwordTest;
+      creds.ok = true;
+    }
 
     logMessage("Connected to Wi-Fi");
     // sendCommand("page HomePage");  // go to main page
@@ -1332,6 +1358,7 @@ void setup() {
     // sendCommand("page HomePage");  
     // sendCommand("page HomePage");  
     sendCommand("page HomePage"); 
+    
     
   }
   
