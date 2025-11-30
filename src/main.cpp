@@ -109,10 +109,32 @@ std::map<int, String> NO_WIFI_PAGE_MAP = {
     {3, "b1"},
     {4, "b2"},
     {5, "b3"},
-    {6, "b4"},
-    {7, "b5"},
+    {6, "b4"}, //End of wifi options
+    {7, "b5"}, //Unlisted
     {8, "b6"} //Refresh button
 };
+
+
+// Start addr autofill buttons
+std::map<int, String> HOME_PAGE_START_BUTTONS = {
+    {10, "b1"},
+    {11, "b2"},
+    {12, "b3"},
+};
+
+// End Addr auto fill buttons
+std::map<int, String> HOME_PAGE_END_BUTTONS = {
+    {13, "b4"},
+    {14, "b6"},
+    {15, "b7"},
+};
+
+const int HOME_PAGE_START_TXT_ID = 3; //t2
+const int HOME_PAGE_START_SELECTED_ID = 8; //Selected start location
+const int HOME_PAGE_END_TXT_ID = 5;   //t4
+const int HOME_PAGE_END_SELECTED_ID = 9; //Selected end location
+
+
 
 // std::map<int, String> WIFI_INPUT_MAP = {
 //     {2, "b0"},
