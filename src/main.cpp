@@ -496,7 +496,6 @@ struct Match {
   String val;        // captured human string
 };
 
-
 struct Station {
   unsigned long pos = 0;
   String name;
@@ -508,13 +507,13 @@ struct Station {
   bool delayed = false;        // true if chosen epoch > scheduledEpoch
 };
 
+// --- Helpers (unchanged semantics, small additions) ---
 
-// Helpers
 static int skipSpaces(const String &s, int i) {
   int n = s.length();
   while (i < n) {
     char c = s.charAt(i);
-    if (c == ' ' || c == '\t' || c == '\r' || c == '\n') ++i; //Move forward until it's not this char
+    if (c == ' ' || c == '\t' || c == '\r' || c == '\n') ++i;
     else break;
   }
   return i;
@@ -522,21 +521,20 @@ static int skipSpaces(const String &s, int i) {
 
 // Parse an unsigned integer starting at i; advances i; returns -1 if none
 static long parseNumber(const String &s, int &i) {
-  i = skipSpaces(s, i); //At the next non-space
+  i = skipSpaces(s, i);
   int n = s.length();
   long val = 0;
   bool found = false;
   while (i < n) {
     char c = s.charAt(i);
     if (c >= '0' && c <= '9') {
-      found = true; //Reading consequtive digits
+      found = true;
       val = val * 10 + (c - '0');
       ++i;
     } else break;
   }
   return found ? val : -1;
 }
-
 
 // Return true if the label looks like a transit route (contains at least one digit).
 static bool isTransitRouteLabel(const String &label) {
@@ -545,6 +543,36 @@ static bool isTransitRouteLabel(const String &label) {
     if (c >= '0' && c <= '9') return true;
   }
   return false;
+}
+
+// Normalize a label: trim, collapse whitespace, filter obvious garbage (svg urls, //maps, etc.)
+static String normalizeLabel(const String &label) {
+  String out = label;
+  out.trim();
+  out.replace("\u202F", " ");
+  out.replace("\u00A0", " ");
+  // collapse multiple spaces
+  String tmp;
+  bool lastSpace = false;
+  for (int i = 0; i < out.length(); ++i) {
+    char c = out.charAt(i);
+    if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+      if (!lastSpace) { tmp += ' '; lastSpace = true; }
+    } else { tmp += c; lastSpace = false; }
+  }
+  tmp.trim();
+  String low = tmp;
+  low.toLowerCase();
+  if (low.startsWith("http://") || low.startsWith("https://") || low.startsWith("//") ||
+      low.indexOf("maps.gstatic.com") >= 0 || low.indexOf(".svg") >= 0) return String();
+  // require at least one alphanumeric character
+  bool hasAlnum = false;
+  for (int i = 0; i < tmp.length(); ++i) {
+    char c = tmp.charAt(i);
+    if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) { hasAlnum = true; break; }
+  }
+  if (!hasAlnum) return String();
+  return tmp;
 }
 
 // Extract a quoted string starting at index i (i points at opening quote).
@@ -574,7 +602,7 @@ static String extractQuoted(const String &s, int &i) {
   return String();
 }
 
-// Try to parse a station block at index i. If found, push a Station and return new index (> i).
+// --- tryStationBlock (robust, consumes entire station block and collects time arrays) ---
 // Station pattern expected: ["Stop Name", "12345", [epoch, "TZ", "human time", ...], ...]
 static int tryStationBlock(const String &body, int i, std::vector<Station> &stations) {
   int n = body.length();
@@ -706,14 +734,7 @@ static int tryStationBlock(const String &body, int i, std::vector<Station> &stat
   return n;
 }
 
-// Station s; s.pos = (unsigned long)i; s.name = stopName; s.humanTime = humanTime;
-
-// Scan the body and collect matches for:
-// - routes: nested [code, ["Label", ...]]
-// - distances: [code, "0.4 mi", ...] heuristically recognized by units
-// - walkTimes: [code, "8 min", ...] recognized by "min"
-// - departures: inline departure_time arrays or quoted times
-// - stations: via tryStationBlock
+// --- scanBodyManual (uses tryStationBlock and filters route labels) ---
 static void scanBodyManual(const String &body,
                            std::vector<Match> &routes,
                            std::vector<Match> &distances,
@@ -750,10 +771,14 @@ static void scanBodyManual(const String &body,
               if (label.length() > 0) {
                 // Only treat this quoted label as a route if it looks like a transit route (contains a digit).
                 if (isTransitRouteLabel(label)) {
-                  Match m; m.pos = (unsigned long)p; m.val = label;
-                  routes.push_back(m);
+                  // normalize label before pushing
+                  String norm = normalizeLabel(label);
+                  if (norm.length() > 0) {
+                    Match m; m.pos = (unsigned long)p; m.val = norm;
+                    routes.push_back(m);
+                  }
                 } else {
-                  // not a transit route label; ignore as route (it will still be parsed elsewhere if needed)
+                  // not a transit route label; ignore as route
                 }
                 i = q;
                 ++i;
@@ -771,18 +796,15 @@ static void scanBodyManual(const String &body,
               // heuristics for distance
               if (low.endsWith("mi") || low.endsWith("ft") || low.indexOf("km") >= 0 ||
                   (low.indexOf(" m") >= 0 && low.indexOf("min") == -1)) {
-                Match m; m.pos = (unsigned long)p; m.val = value;
-                distances.push_back(m);
+                Match m; m.pos = (unsigned long)p; m.val = value; distances.push_back(m);
               } else if (low.indexOf("min") >= 0) {
-                Match m; m.pos = (unsigned long)p; m.val = value;
-                walkTimes.push_back(m);
+                Match m; m.pos = (unsigned long)p; m.val = value; walkTimes.push_back(m);
               } else {
                 // possible departure-like quoted time (e.g., "5:08 AM" or "5:08 AM")
                 if (value.indexOf(':') >= 0 && (value.indexOf("AM") >= 0 || value.indexOf("PM") >= 0 ||
                                                value.indexOf("am") >= 0 || value.indexOf("pm") >= 0 ||
                                                value.indexOf("\u202FAM") >= 0 || value.indexOf("\u202FPM") >= 0)) {
-                  Match m; m.pos = (unsigned long)p; m.val = value;
-                  departures.push_back(m);
+                  Match m; m.pos = (unsigned long)p; m.val = value; departures.push_back(m);
                 }
               }
               i = q;
@@ -816,8 +838,7 @@ static void scanBodyManual(const String &body,
                   int q3 = q2;
                   String human = extractQuoted(body, q3);
                   if (human.length() > 0) {
-                    Match m; m.pos = (unsigned long)i; m.val = human;
-                    departures.push_back(m);
+                    Match m; m.pos = (unsigned long)i; m.val = human; departures.push_back(m);
                     i = q3;
                     ++i;
                     continue;
@@ -834,16 +855,50 @@ static void scanBodyManual(const String &body,
   }
 }
 
-// Grouping: for each route found, find the first following distance, walkTime, station and departure.
-// Limit results to MAX_RESULTS.
-static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &routes,
+// --- dedupeRoutes helper (removes duplicates and garbage) ---
+static std::vector<Match> dedupeRoutes(const std::vector<Match> &routes) {
+  std::vector<Match> out;
+  out.reserve(routes.size());
+  for (const auto &r : routes) {
+    String norm = normalizeLabel(r.val);
+    if (norm.length() == 0) continue;
+    bool seen = false;
+    for (const auto &o : out) {
+      if (o.pos == r.pos && o.val == norm) { seen = true; break; }
+    }
+    if (!seen) {
+      Match m; m.pos = r.pos; m.val = norm;
+      out.push_back(m);
+    }
+  }
+  return out;
+}
+
+// --- groupBoardingInfos (improved matching, avoids duplicates) ---
+static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &routes_in,
                                                     const std::vector<Match> &distances,
                                                     const std::vector<Match> &walkTimes,
                                                     const std::vector<Station> &stations,
                                                     const std::vector<Match> &departures,
                                                     size_t MAX_RESULTS) {
   std::vector<BoardingInfo> out;
+
+  // normalize and dedupe routes
+  std::vector<Match> routes = dedupeRoutes(routes_in);
+
   out.reserve(min((size_t)routes.size(), MAX_RESULTS));
+
+  // helper to find first departure after a given pos
+  auto findDepartureAfter = [&](unsigned long pos)->String {
+    for (const auto &dep : departures) {
+      if (dep.pos > pos) return dep.val;
+    }
+    return String();
+  };
+
+  // used set to avoid duplicate (label, station, next) triples
+  std::vector<String> usedKeys;
+
   for (size_t r = 0; r < routes.size() && out.size() < MAX_RESULTS; ++r) {
     const Match &rm = routes[r];
     BoardingInfo bi;
@@ -857,33 +912,33 @@ static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &ro
     for (const auto &w : walkTimes) {
       if (w.pos > rm.pos) { bi.walkTime = w.val; break; }
     }
-    // first station after route
-      // first station after route: prefer station that has a humanTime (likely the boarding stop)
-    const Station *foundStation = nullptr;
+
+    // first station after route: prefer station that has a humanTime (likely the boarding stop)
     const Station *firstAfter = nullptr;
+    const Station *bestStation = nullptr;
     for (const auto &s : stations) {
       if (s.pos > rm.pos) {
         if (!firstAfter) firstAfter = &s;
-        if (s.humanTime.length() > 0) { foundStation = &s; break; }
+        if (s.humanTime.length() > 0 || s.epoch > 0) { bestStation = &s; break; }
       }
     }
-    if (!foundStation) foundStation = firstAfter;
-    if (foundStation) {
-      bi.stationName = foundStation->name;
-      if (foundStation->humanTime.length() > 0) {
-        bi.nextBusTime = foundStation->humanTime;
-        if (foundStation->delayed && foundStation->scheduledHuman.length() > 0) {
-          // show both: actual next time and the scheduled time it replaced
-          bi.nextBusTime += " (delayed from ";
-          bi.nextBusTime += foundStation->scheduledHuman;
-          bi.nextBusTime += ")";
-        }
+    if (!bestStation) bestStation = firstAfter;
+
+    if (bestStation) {
+      bi.stationName = bestStation->name;
+      if (bestStation->humanTime.length() > 0) {
+        bi.nextBusTime = bestStation->humanTime;
+      } else {
+        // fallback: find first departure after station pos
+        String dep = findDepartureAfter(bestStation->pos);
+        if (dep.length() > 0) bi.nextBusTime = dep;
+        else bi.nextBusTime = String();
       }
-      else {
-        // find first departure after station
-        for (const auto &dep : departures) {
-          if (dep.pos > foundStation->pos) { bi.nextBusTime = dep.val; break; }
-        }
+      // append delay note if present
+      if (bestStation->delayed && bestStation->scheduledHuman.length() > 0) {
+        bi.nextBusTime += " (delayed from ";
+        bi.nextBusTime += bestStation->scheduledHuman;
+        bi.nextBusTime += ")";
       }
     } else {
       // fallback: first departure after route
@@ -892,12 +947,27 @@ static std::vector<BoardingInfo> groupBoardingInfos(const std::vector<Match> &ro
       }
     }
 
+    // Build a uniqueness key to avoid duplicates: label|station|next
+    String key = bi.busLabel;
+    key += "|";
+    key += bi.stationName;
+    key += "|";
+    key += bi.nextBusTime;
+
+    bool already = false;
+    for (const auto &k : usedKeys) {
+      if (k == key) { already = true; break; }
+    }
+    if (already) continue; // skip duplicate entry
+
+    usedKeys.push_back(key);
     out.push_back(bi);
   }
+
   return out;
 }
 
-// Public API: extract up to MAX_RESULTS BoardingInfo entries from body and optionally print debug to dbgSerial.
+// --- Public API: extract up to MAX_RESULTS BoardingInfo entries from body and optionally print debug to dbgSerial. ---
 std::vector<BoardingInfo> extractBoardingInfosManual(const String &body, Stream *dbgSerial, size_t MAX_RESULTS) {
   std::vector<Match> routes;
   std::vector<Match> distances;
@@ -936,23 +1006,6 @@ std::vector<BoardingInfo> extractBoardingInfosManual(const String &body, Stream 
   }
 
   return infos;
-}
-
-
-
-String extractJsonPart(const String &raw) {
-  int startObj = raw.indexOf('{');
-  int startArr = raw.indexOf('[');
-  int start = -1;
-  if (startObj >= 0 && (startObj < startArr || startArr == -1)) start = startObj;
-  else start = startArr;
-  if (start == -1) return String();
-
-  int endObj = raw.lastIndexOf('}');
-  int endArr = raw.lastIndexOf(']');
-  int end = max(endObj, endArr);
-  if (end == -1 || end < start) return String();
-  return raw.substring(start, end + 1);
 }
 
 
@@ -1026,6 +1079,21 @@ void searchForPatterns(JsonVariant v, Place places[], int &count, int maxPlaces)
   }
 
   // primitives: nothing to do
+}
+
+String extractJsonPart(const String &raw) {
+  int startObj = raw.indexOf('{');
+  int startArr = raw.indexOf('[');
+  int start = -1;
+  if (startObj >= 0 && (startObj < startArr || startArr == -1)) start = startObj;
+  else start = startArr;
+  if (start == -1) return String();
+
+  int endObj = raw.lastIndexOf('}');
+  int endArr = raw.lastIndexOf(']');
+  int end = max(endObj, endArr);
+  if (end == -1 || end < start) return String();
+  return raw.substring(start, end + 1);
 }
 
 
