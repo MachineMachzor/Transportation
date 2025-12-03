@@ -20,13 +20,13 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = true; //If false, should be production nextion
+const bool TESTING_NEXTION = false;//If false, should be production nextion
 const bool FAKE_WIFI = true; //If true, always go to no wifi page for testing
 
 
 const bool SKIP_WIFI_SELECTION = true;
 const bool SKIP_WIFI_LOGIN = true;
-const bool SKIP_ADDR_CHOOSE = false;
+const bool SKIP_ADDR_CHOOSE = true;
 
 /*
 // FULL TESTING OF NEXTION
@@ -189,6 +189,14 @@ String httpGetStream(const String &url) {
   delete client;
   return result;
 }
+
+struct currentLocation {
+  double lat;
+  double lon;
+};
+
+
+
 String logBuffer = "";
 static std::vector<String> logLines;  
 static int holdMessageCount = 100; //8;  // holds up to N messages
@@ -221,6 +229,32 @@ void handleIndex() {
 
 void handleLogs() {
   server.send(200, "text/plain", logBuffer);
+}
+
+
+currentLocation getCurrentLocation() {
+  currentLocation c;
+  String url = "https://ipinfo.io/json";
+  String response = httpGetStream(url);
+  // logMessage(response);
+  StaticJsonDocument<512> doc;
+  DeserializationError error = deserializeJson(doc, response);
+  if (error) {
+    logMessage("Failed to parse location JSON");
+    return c;
+  }
+  String loc_str = doc["loc"].as<String>();
+  std::string loc = loc_str.c_str();
+  std::regex locRegex(R"(([-+]?[0-9]*\.?[0-9]+),([-+]?[0-9]*\.?[0-9]+))");
+  std::smatch matches;
+  if (std::regex_search(loc, matches, locRegex) && matches.size() == 3) {
+    c.lat = static_cast<float>(std::stof(matches[1].str())); //double
+    c.lon = static_cast<float>(std::stof(matches[2].str()));
+  } else {
+    logMessage("Failed to extract lat/lon from location string");
+  }
+  return c;
+  // c.lat = String(doc["lat"].as<double>(), 6);
 }
 
 
@@ -1232,12 +1266,12 @@ String setPbCenter(String url, double newLat, double newLon) {
 
 
 
-std::vector<String> getPlaces(String searchQuery, Place places[], int maxPlaces, bool verbose=false) {
+std::vector<String> getPlaces(String searchQuery, Place places[], int maxPlaces, double newLat, double newLong, bool verbose=false) {
   searchQuery.replace(" ", "+");
   searchQuery.replace(",", "%2C");
   String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=" + searchQuery + "&ech=3&pb=!2i13!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i815!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sURMlaa7DOpPe5NoP99fnkQY!7e81!17sURMlaa7DOpPe5NoP99fnkQY%3A63!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i760";
   // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=" + searchQuery + "&ech=3";
-  // url = setPbCenter(url, 40.7128, -74.0060); //NYC coords for testing
+  url = setPbCenter(url, newLat, newLong); //NYC coords for testing
 
   String body = httpGetStream(url);
   logMessage("Response length: " + String(body.length()));
@@ -1259,13 +1293,16 @@ std::vector<String> getPlaces(String searchQuery, Place places[], int maxPlaces,
 
 BoardingInfo infos[MAX_RESULTS];
 
-void getDirections(String start, String end) {
+
+
+void getDirections(String start, String end, double newLat, double newLong) {
   start.replace(" ", "+");
   start.replace(",", "%2C");
   end.replace(" ", "+");
   end.replace(",", "%2C");
   String url = "https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s" + start + "!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s" + end + "!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184";
-  dbgSerial->println("DirectionsURL: " + url);
+  url = setPbCenter(url, newLat, newLong); // set to user's location
+  // dbgSerial->println("DirectionsURL: " + url);
   // return 0;
   String body = httpGetStream(url);
   logMessage("Directions response length: " + String(body.length()));
@@ -1314,6 +1351,8 @@ void setup() {
   String startAddr = "START";
   String endAddr = "Pittsburgh, PA 15222";
 
+  
+
 
   // example: RX=16, TX=17
   Serial1.begin(NEXTION_BAUD, SERIAL_8N1, 16, 17); // ESP32 hardware UART
@@ -1357,7 +1396,7 @@ void setup() {
     logMessage("No prior SSID");
   } else {
     logMessage("Prior SSID, try to connect to wifi, SSID: " + creds.ssid + ", PASS: " + creds.pass);
-    connectionSequence(true);
+    // connectionSequence(true);
     connected = tryWifi(creds.ssid.c_str(), creds.pass.c_str());
     creds.ok = connected;
     String tmpOk = creds.ok ? "true" : "false";
@@ -1434,7 +1473,8 @@ void setup() {
   // connected = WiFi.status() == WL_CONNECTED;
   // Would have to do further checks here than this, as they may have prior stored addresses
   if (creds.ok) {
-    logMessage("Skipped wifi selection");
+    logMessage("Wifi OK");
+    currentLocation c = getCurrentLocation();
     // sendCommand("page 1");
     // debugHex("page HomePage");
     sendCommand("page HomePage"); 
@@ -1443,14 +1483,14 @@ void setup() {
 
     // SEARCH QUERY SEQUENCE
     // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Tw&ech=7&pb=!2i2!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i1298!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sAvghab7tBdbV5NoP9PqxgQ0!7e81!17sAvghab7tBdbV5NoP9PqxgQ0%3A83!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i759"; // example (fragile)
-    // searchQuery = "434";
-    // getPlaces(searchQuery, places, MAX_RESULTS, true);
-
+    searchQuery = "434";
+    getPlaces(searchQuery, places, MAX_RESULTS, c.lat, c.lon, true);
+    dbgSerial->println("----");
 
     // DIRECTIONS SEQUENCE
-    // locals.startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
-    // locals.endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
-    // getDirections(locals.startAddr, locals.endAddr);
+    locals.startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
+    locals.endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
+    getDirections(locals.startAddr, locals.endAddr, c.lat, c.lon);
 
     std::vector<String> startPlacesSearch;
     std::vector<String> endPlacesSearch;
@@ -1461,6 +1501,7 @@ void setup() {
     String endText;
     String chosenStart;
     String chosenEnd;
+    
     if (!SKIP_ADDR_CHOOSE) {
       while (chosenStart.length() == 0 && chosenEnd.length() == 0) {
         // buttonText btStart = GetStartAddress();
@@ -1471,7 +1512,7 @@ void setup() {
         if (startText != priorStartText && startText.length() > 0) {
           logMessage("Start text: " + startText);
           priorStartText = startText;
-          startPlacesSearch = getPlaces(startText, places, PLACE_MAX);
+          startPlacesSearch = getPlaces(startText, places, PLACE_MAX, c.lat, c.lon);
           sendComponentTxt(PLACE_MAX, 50, startPlacesSearch, "b", false, 1);
           // break;
         }
@@ -1482,12 +1523,16 @@ void setup() {
         if (endText != priorEndText && endText.length() > 0) {
           logMessage("End text: " + endText);
           priorEndText = endText;
-          endPlacesSearch = getPlaces(endText, places, PLACE_MAX);
+          endPlacesSearch = getPlaces(endText, places, PLACE_MAX, c.lat, c.lon);
           sendComponentTxt(PLACE_MAX, 50, endPlacesSearch, "b", false, 4);
           break;
         }
       }
     }
+
+    
+    // logMessage("Current location: " + String(c.lat, 6) + ", " + String(c.lon, 6));
+    
     
     // logMessage("Start text: " + startText);
     // sendCommand("get " + NO_WIFI_PAGE_MAP[compId] + ".txt");
