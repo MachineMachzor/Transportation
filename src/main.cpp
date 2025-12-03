@@ -21,11 +21,12 @@
 
 Preferences prefs;
 const bool TESTING_NEXTION = true; //If false, should be production nextion
-const bool FAKE_WIFI = false; //If true, always go to no wifi page for testing
+const bool FAKE_WIFI = true; //If true, always go to no wifi page for testing
 
 
 const bool SKIP_WIFI_SELECTION = true;
 const bool SKIP_WIFI_LOGIN = true;
+const bool SKIP_ADDR_CHOOSE = false;
 
 /*
 // FULL TESTING OF NEXTION
@@ -52,6 +53,11 @@ const int MAX_RESULTS = 10; // top N suggestions to keep
 // For testing
 char* ssidTest     = "NETGEAR26";
 char* passwordTest = "melodicpanda708";
+
+// char* ssidTest     = "Pixel_4976";
+// char* passwordTest = "abcdefgh";
+
+
 
 struct WifiCredentials {
   String ssid;
@@ -346,17 +352,20 @@ void handleNextionPacket(uint8_t *p, int len) {
   }
 }
 
-std::vector<String> connectionSequence() {
+std::vector<String> connectionSequence(bool verbose=false) {
   int n = WiFi.scanNetworks();
   WifiCredentials result;
   // String wifiList = "";
   std::vector<String> wifiList;
-    
+  dbgSerial->println("Wifi List\n-----------");
   for (int i = 0; i < min(n,5); ++i) {               // send first 5 rows min(n,5)
     String s = WiFi.SSID(i);
     // sendCommand("t" + String(i) + ".txt=\"" + s + "\""); // assumes t0..t4 text fields on Nextion, this is why we may want to limit it to 5 only
-    dbgSerial->println(s);
+    // dbgSerial->println(s);
     wifiList.push_back(s);
+    if (verbose) {
+      dbgSerial->println(s);
+    }
     // wifiList += s;
   }
   // Realistically sleep wait until Nextion calls back with a submission attempt for this, and also send creds to Nextion
@@ -1192,11 +1201,44 @@ int parsePlacesFromBody(const String &body, Place places[], int maxPlaces) {
   return found;
 }
 
+String setPbCenter(String url, double newLat, double newLon) {
+  String token2d = "!2d";
+  String token3d = "!3d";
+  int i2 = url.indexOf(token2d);
+  int i3 = url.indexOf(token3d);
+  if (i2 < 0 || i3 < 0 || i3 < i2) return url; // nothing to replace or unexpected order
 
-std::vector<String> getPlaces(String searchQuery, Place places[], int maxPlaces) {
+  // find end of the numeric lon after !2d
+  int j = i2 + token2d.length();
+  while (j < url.length()) {
+    char c = url.charAt(j);
+    if (!( (c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E')) break;
+    ++j;
+  }
+  // find end of numeric lat after !3d
+  int k = i3 + token3d.length();
+  while (k < url.length()) {
+    char c = url.charAt(k);
+    if (!( (c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E')) break;
+    ++k;
+  }
+
+  // build replacement substring
+  String newSub = token2d + String(newLon, 6) + token3d + String(newLat, 6);
+  // replace the slice from i2 .. k-1 with newSub
+  String out = url.substring(0, i2) + newSub + url.substring(k);
+  return out;
+}
+
+
+
+std::vector<String> getPlaces(String searchQuery, Place places[], int maxPlaces, bool verbose=false) {
   searchQuery.replace(" ", "+");
   searchQuery.replace(",", "%2C");
   String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=" + searchQuery + "&ech=3&pb=!2i13!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i815!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sURMlaa7DOpPe5NoP99fnkQY!7e81!17sURMlaa7DOpPe5NoP99fnkQY%3A63!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i760";
+  // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=" + searchQuery + "&ech=3";
+  // url = setPbCenter(url, 40.7128, -74.0060); //NYC coords for testing
+
   String body = httpGetStream(url);
   logMessage("Response length: " + String(body.length()));
   // dbgSerial->println(body); // or parse it
@@ -1208,6 +1250,9 @@ std::vector<String> getPlaces(String searchQuery, Place places[], int maxPlaces)
   for (int i = 0; i < count; ++i) {
     // dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
     placeRetStrings.push_back(places[i].name.c_str());
+    if (verbose) {
+      dbgSerial->printf("%s\n", places[i].name.c_str());
+    }
   }
   return placeRetStrings;
 }
@@ -1261,7 +1306,7 @@ void setup() {
   Serial.begin(USB_BAUD);
   // Serial.println("hello");
 
-  WiFi.mode(WIFI_STA); //Client/station mode.
+  
   // WiFi.begin(ssid, password);
 
 
@@ -1292,7 +1337,9 @@ void setup() {
 
 
   
-  WiFi.disconnect(); 
+  WiFi.disconnect(true); 
+  delay(100);
+  WiFi.mode(WIFI_STA); //Client/station mode.
   
   delay(100);   //Would remove prior connections, it stores it by default, could check to see if it's connected off the bat
   WifiCredentials creds;
@@ -1309,9 +1356,12 @@ void setup() {
   if (creds.ssid.length() == 0) { //|| !FAKE_WIFI
     logMessage("No prior SSID");
   } else {
-    logMessage("Prior SSID, try to connect to wifi");
+    logMessage("Prior SSID, try to connect to wifi, SSID: " + creds.ssid + ", PASS: " + creds.pass);
+    connectionSequence(true);
     connected = tryWifi(creds.ssid.c_str(), creds.pass.c_str());
     creds.ok = connected;
+    String tmpOk = creds.ok ? "true" : "false";
+    logMessage("Actually successfully connected: " + tmpOk);
   }
   
 
@@ -1394,13 +1444,13 @@ void setup() {
     // SEARCH QUERY SEQUENCE
     // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Tw&ech=7&pb=!2i2!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i1298!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sAvghab7tBdbV5NoP9PqxgQ0!7e81!17sAvghab7tBdbV5NoP9PqxgQ0%3A83!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i759"; // example (fragile)
     // searchQuery = "434";
-    // placesCount = getPlaces(searchQuery, places, MAX_RESULTS);
+    // getPlaces(searchQuery, places, MAX_RESULTS, true);
 
 
     // DIRECTIONS SEQUENCE
-    locals.startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
-    locals.endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
-    getDirections(locals.startAddr, locals.endAddr);
+    // locals.startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
+    // locals.endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
+    // getDirections(locals.startAddr, locals.endAddr);
 
     std::vector<String> startPlacesSearch;
     std::vector<String> endPlacesSearch;
@@ -1411,31 +1461,34 @@ void setup() {
     String endText;
     String chosenStart;
     String chosenEnd;
-    while (chosenStart.length() == 0 && chosenEnd.length() == 0) {
-      // buttonText btStart = GetStartAddress();
-      sendCommand("get " + HOME_PAGE_START_TXT + ".txt");
-      startText = getButtonText(*nextionSerial);
+    if (!SKIP_ADDR_CHOOSE) {
+      while (chosenStart.length() == 0 && chosenEnd.length() == 0) {
+        // buttonText btStart = GetStartAddress();
+        sendCommand("get " + HOME_PAGE_START_TXT + ".txt");
+        startText = getButtonText(*nextionSerial);
 
-      
-      if (startText != priorStartText && startText.length() > 0) {
-        logMessage("Start text: " + startText);
-        priorStartText = startText;
-        startPlacesSearch = getPlaces(startText, places, PLACE_MAX);
-        sendComponentTxt(PLACE_MAX, 50, startPlacesSearch, "b", false, 1);
-        // break;
-      }
+        
+        if (startText != priorStartText && startText.length() > 0) {
+          logMessage("Start text: " + startText);
+          priorStartText = startText;
+          startPlacesSearch = getPlaces(startText, places, PLACE_MAX);
+          sendComponentTxt(PLACE_MAX, 50, startPlacesSearch, "b", false, 1);
+          // break;
+        }
 
-      sendCommand("get " + HOME_PAGE_END_TXT_ID + ".txt");
-      endText = getButtonText(*nextionSerial);
+        sendCommand("get " + HOME_PAGE_END_TXT_ID + ".txt");
+        endText = getButtonText(*nextionSerial);
 
-      if (endText != priorEndText && endText.length() > 0) {
-        logMessage("End text: " + endText);
-        priorEndText = endText;
-        endPlacesSearch = getPlaces(endText, places, PLACE_MAX);
-        sendComponentTxt(PLACE_MAX, 50, endPlacesSearch, "b", false, 4);
-        break;
+        if (endText != priorEndText && endText.length() > 0) {
+          logMessage("End text: " + endText);
+          priorEndText = endText;
+          endPlacesSearch = getPlaces(endText, places, PLACE_MAX);
+          sendComponentTxt(PLACE_MAX, 50, endPlacesSearch, "b", false, 4);
+          break;
+        }
       }
     }
+    
     // logMessage("Start text: " + startText);
     // sendCommand("get " + NO_WIFI_PAGE_MAP[compId] + ".txt");
     // text = getButtonText(*nextionSerial); // flush any prior response
@@ -1503,6 +1556,7 @@ Is this all possible?
 // Run script in monitor
 // cd C:\Users\ringk\OneDrive\Documents\PlatformIO\Projects\Transportation_IO
 // pio device monitor -p COM4 -b 115200 --filter esp32_exception_decoder
+// pio device monitor -p COM3 -b 115200 --filter esp32_exception_decoder
 
 
 /*
