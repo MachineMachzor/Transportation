@@ -20,14 +20,18 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = false;//If false, should be production nextion
-const bool FAKE_WIFI = true; //If true, always go to no wifi page for testing
+const bool TESTING_NEXTION = true;//If false, should be production nextion
+const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one
+
+// This is for the use case of if wifi just does not work randomly, but still want to develop code
+const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecting
 
 
 // Set all of these to false in production to not skip the code
 const bool SKIP_WIFI_SELECTION = true;
 const bool SKIP_WIFI_LOGIN = true;
 const bool SKIP_ADDR_CHOOSE = true;
+const bool SKIP_FIRST_BUS_SELECT = false;
 const bool SKIP_WALKTIME_SET = false;
 
 // Set all of these to false in production to not reset saved settings
@@ -35,13 +39,14 @@ const bool RESET_SAVED_ADDRS = true;
 const bool RESET_SAVED_WALKTIME = true;
 
 
-// This is for the use case of if wifi just does not work randomly, but still want to develop code
-const bool OVERRIDE_WIFI = true; //Last resort, usually wifi should be connecting
+
 
 /*
 // FULL TESTING OF NEXTION
 const bool TESTING_NEXTION = true; //If false, should be production nextion
 const bool FAKE_WIFI = false; //If true, always go to no wifi page for testing
+
+ets Jul 29 2019 12:21:46\x0D\x0A\x0D\x0Arst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)\x0D\x0Aconfigsip: 0, SPIWP:0xee\x0D\x0Aclk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00\x0D\x0Amode:DIO, clock div:2\x0D\x0Aload:0x3fff0030,len:1184\x0D\x0Aload:0x40078000,len:13232\x0D\x0Aload:0x40080400,len:3028\x0D\x0Aentry 0x400805e4\x0D\x0A
 */
 
 Stream *dbgSerial = nullptr;     // for debug output to PC
@@ -53,6 +58,7 @@ const uint32_t NEXTION_BAUD = 9600; // Nextion
 
 
 const int MAX_RESULTS = 10; // top N suggestions to keep
+const int MAX_TRANSIT_RESULTS = 2; // top N transit route suggestions to keep
 
 String pageTracker;
 
@@ -101,6 +107,9 @@ struct keys {
   String startAddr = "START";
   String endAddr = "END";
   String walkTime = "WALKTIME"; //Walk time has to be 0 or greater, prohibit anything less than 0
+  String milesCompute = "MILES"; //This is the miles specified for their walktime at the time, could be default or not, going to use this as relative if the first bus changes
+  String bus = "BUS"; //Caches the bus
+  String firstBusOnly = "FIRSTBUSONLY"; //Overrides saved transit bus and just takes first one
 };
 
 struct login_errors {
@@ -137,6 +146,11 @@ std::map<int, String> ADDR_PAGES = {
     {8, "b3"},
 };
 
+std::map<int, String> TRANSIT_BUSES = {
+    {3, "b0"},
+    {4, "b1"}
+};
+
 int ADDR_CONTINUE_ID = 3;
 
 
@@ -145,6 +159,69 @@ const String HOME_PAGE_START_TXT = "t2"; //User inputted start
 const String HOME_PAGE_START_SELECTED_ID = "t5"; //Selected start location
 const String  HOME_PAGE_END_TXT_ID = "t4";   //User inputted end
 const String  HOME_PAGE_END_SELECTED_ID = "t6"; //Selected end location
+
+
+static constexpr float KM_TO_MILES = 0.621371f;
+static constexpr float FT_PER_MILE = 5280.0f;
+
+// Extract the first numeric token (handles optional leading sign and decimal).
+// Returns true and sets outVal if a number was found.
+bool extractNumber(const String &s, float &outVal) {
+  String num;
+  bool seenDigit = false;
+  for (size_t i = 0; i < s.length(); ++i) {
+    char c = s[i];
+    if ((c >= '0' && c <= '9') || c == '.' || (c == '-' && num.length() == 0)) {
+      num += c;
+      seenDigit = true;
+    } else if (seenDigit) {
+      break; // stop at first non-number after we've started
+    }
+  }
+  if (num.length() == 0) return false;
+  outVal = num.toFloat();
+  return true;
+}
+
+// Convert strings like "0.1 mi", "300 ft", "1 km" to miles (float).
+// If unit not recognized, assumes the number is already in miles.
+float distanceStringToMiles(const String &raw) {
+  String s = raw;
+  s.toLowerCase();
+  s.trim();
+
+  float value = 0.0f;
+  if (!extractNumber(s, value)) return 0.0f;
+
+  // detect units (allow "mi", " mi", "ft", " ft", "km", " km")
+  if (s.indexOf("mi") >= 0 && s.indexOf("min") < 0) { // avoid matching "min"
+    return value;
+  }
+  if (s.indexOf("ft") >= 0) {
+    return value / FT_PER_MILE;
+  }
+  if (s.indexOf("km") >= 0) {
+    return value * KM_TO_MILES;
+  }
+
+  // fallback: assume miles
+  return value;
+}
+
+// Parse minutes from strings like "6 min" or "12.5min" and return float minutes.
+// Returns 0.0f if no number or no "min" token present.
+float minutesStringToFloat(const String &raw) {
+  String s = raw;
+  s.toLowerCase();
+  s.trim();
+  if (s.indexOf("min") < 0) return 0.0f;
+
+  float value = 0.0f;
+  if (!extractNumber(s, value)) return 0.0f;
+  return value;
+}
+
+
 
 
 
@@ -164,7 +241,8 @@ int port = 80;
 WebServer server(port); // serve on port
 const keys CONST_KEYS;
 
-const int WALKTIME_NONE = -999;
+const float WALKTIME_NONE = -999;
+const float WALKTIME_DEFAULT = -333; // signal to use default walk time from Maps
 
 const char* EMPTY_VALUE = "";
 
@@ -412,7 +490,7 @@ std::vector<String> connectionSequence(bool verbose=false) {
   WifiCredentials result;
   // String wifiList = "";
   std::vector<String> wifiList;
-  dbgSerial->println("Wifi List\n-----------");
+  if (verbose) dbgSerial->println("Wifi List\n-----------");
   for (int i = 0; i < min(n,5); ++i) {               // send first 5 rows min(n,5)
     String s = WiFi.SSID(i);
     // sendCommand("t" + String(i) + ".txt=\"" + s + "\""); // assumes t0..t4 text fields on Nextion, this is why we may want to limit it to 5 only
@@ -1136,28 +1214,28 @@ std::vector<BoardingInfo> extractBoardingInfosManual(const String &body, Stream 
 
   scanBodyManual(body, routes, distances, walkTimes, stations, departures, dbgSerial);
 
-  if (dbgSerial) {
-    dbgSerial->print("Found routes: "); dbgSerial->println((int)routes.size());
-    dbgSerial->print("Found distances: "); dbgSerial->println((int)distances.size());
-    dbgSerial->print("Found walkTimes: "); dbgSerial->println((int)walkTimes.size());
-    dbgSerial->print("Found stations: "); dbgSerial->println((int)stations.size());
-    dbgSerial->print("Found departures: "); dbgSerial->println((int)departures.size());
-  }
+  // if (dbgSerial) {
+  //   dbgSerial->print("Found routes: "); dbgSerial->println((int)routes.size());
+  //   dbgSerial->print("Found distances: "); dbgSerial->println((int)distances.size());
+  //   dbgSerial->print("Found walkTimes: "); dbgSerial->println((int)walkTimes.size());
+  //   dbgSerial->print("Found stations: "); dbgSerial->println((int)stations.size());
+  //   dbgSerial->print("Found departures: "); dbgSerial->println((int)departures.size());
+  // }
 
-  auto infos = groupBoardingInfos(routes, distances, walkTimes, stations, departures, MAX_RESULTS);
+  auto infos = groupBoardingInfos(routes, distances, walkTimes, stations, departures, MAX_TRANSIT_RESULTS);
 
-  if (dbgSerial) {
-    dbgSerial->print("Returning "); dbgSerial->print((int)infos.size()); dbgSerial->println(" BoardingInfo entries:");
-    for (size_t i = 0; i < infos.size(); ++i) {
-      const BoardingInfo &b = infos[i];
-      dbgSerial->print("Option "); dbgSerial->print((int)i); dbgSerial->print(": ");
-      dbgSerial->print("bus="); dbgSerial->print(b.busLabel);
-      dbgSerial->print(" dist="); dbgSerial->print(b.walkDistance);
-      dbgSerial->print(" walkTime="); dbgSerial->print(b.walkTime);
-      dbgSerial->print(" station="); dbgSerial->print(b.stationName);
-      dbgSerial->print(" next="); dbgSerial->println(b.nextBusTime);
-    }
-  }
+  // if (dbgSerial) {
+  //   dbgSerial->print("Returning "); dbgSerial->print((int)infos.size()); dbgSerial->println(" BoardingInfo entries:");
+  //   for (size_t i = 0; i < infos.size(); ++i) {
+  //     const BoardingInfo &b = infos[i];
+  //     dbgSerial->print("Option "); dbgSerial->print((int)i); dbgSerial->print(": ");
+  //     dbgSerial->print("bus="); dbgSerial->print(b.busLabel);
+  //     dbgSerial->print(" dist="); dbgSerial->print(b.walkDistance);
+  //     dbgSerial->print(" walkTime="); dbgSerial->print(b.walkTime);
+  //     dbgSerial->print(" station="); dbgSerial->print(b.stationName);
+  //     dbgSerial->print(" next="); dbgSerial->println(b.nextBusTime);
+  //   }
+  // }
 
   return infos;
 }
@@ -1165,14 +1243,14 @@ std::vector<BoardingInfo> extractBoardingInfosManual(const String &body, Stream 
 
 
 // Public API: parse JSON body and fill an array of BoardingInfo
-int parseBoardingInfos(const String &body, BoardingInfo results[], int maxResults) {
+std::vector<BoardingInfo> parseBoardingInfos(const String &body, BoardingInfo results[], int maxResults) {
   // String jsonPart = extractJsonPartSafe(body); //extractJsonPartChunked(body); //extractJsonPartDirections(body);
   // int start = 11; /* index of first '{' or '[' */
   // int endIndex = findJsonEnd(body, start);
   //   Stream *dbgSerial = &Serial; // or &Serial1
 //   size_t MAX_RESULTS = 10;
   std::vector<BoardingInfo> infos = extractBoardingInfosManual(body, dbgSerial, MAX_RESULTS);
-  return 0;
+  return infos;
 }
 
 // --- Heuristic helpers to detect coordinates and names ---
@@ -1341,7 +1419,7 @@ BoardingInfo infos[MAX_RESULTS];
 
 
 
-void getDirections(String start, String end, double newLat, double newLong) {
+std::vector<BoardingInfo> getDirections(String start, String end, double newLat, double newLong) {
   start.replace(" ", "+");
   start.replace(",", "%2C");
   end.replace(" ", "+");
@@ -1354,20 +1432,20 @@ void getDirections(String start, String end, double newLat, double newLong) {
   logMessage("Directions response length: " + String(body.length()));
   // dbgSerial->println("Directions response: " + body.substring(0, min(200, int(body.length())))); // print first 200 chars
 
-  int n = parseBoardingInfos(body, infos, MAX_RESULTS);
-  return;
+  std::vector<BoardingInfo> n = parseBoardingInfos(body, infos, MAX_RESULTS);
+  // return;
 
-  dbgSerial->print("Found ");
-  dbgSerial->print(n);
-  dbgSerial->println(" boarding entries:");
-  for (int i = 0; i < n; ++i) {
-    dbgSerial->println("---");
-    dbgSerial->print("Bus: "); dbgSerial->println(infos[i].busLabel);
-    dbgSerial->print("Walk distance: "); dbgSerial->println(infos[i].walkDistance);
-    dbgSerial->print("Walk time: "); dbgSerial->println(infos[i].walkTime);
-    dbgSerial->print("Station: "); dbgSerial->println(infos[i].stationName);
-    dbgSerial->print("Next bus: "); dbgSerial->println(infos[i].nextBusTime);
-  }
+  logMessage("Found " + String(n.size()) + " boarding entries.");
+  // dbgSerial->print(n);
+  // dbgSerial->println(" boarding entries:");
+  // for (int i = 0; i < n; ++i) {
+  //   dbgSerial->println("---");
+  //   dbgSerial->print("Bus: "); dbgSerial->println(infos[i].busLabel);
+  //   dbgSerial->print("Walk distance: "); dbgSerial->println(infos[i].walkDistance);
+  //   dbgSerial->print("Walk time: "); dbgSerial->println(infos[i].walkTime);
+  //   dbgSerial->print("Station: "); dbgSerial->println(infos[i].stationName);
+  //   dbgSerial->print("Next bus: "); dbgSerial->println(infos[i].nextBusTime);
+  // }
 
 
   // dbgSerial->println(body); // or parse it
@@ -1379,7 +1457,7 @@ void getDirections(String start, String end, double newLat, double newLong) {
   // for (int i = 0; i < count; ++i) {
   //   dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
   // }
-  // return count;
+  return n;
 }
 
 
@@ -1388,21 +1466,24 @@ String appendChosen = "Chosen: ";
 
 
 int chooseWalkTime() {
-  int walkTime = WALKTIME_NONE;
+  float walkTime = WALKTIME_NONE;
   String walkText;
   String lastMsg = "";
   String newMsg = "";
+  bool goodWalkTime = false;
   while(true) {
+    goodWalkTime = false;
     sendCommand("get t2.txt");
     walkText = getButtonText(*nextionSerial);
-    sendCommand("t4.txt=\"" + walkText + " Length " + String(walkText.length()) + "\""); //Echo back for testing
+    sendCommand("t4.txt=\"Entered: " + walkText + " Length " + String(walkText.length()) + "\""); //Echo back for testing
     if (walkText.length() == 0) {
       newMsg = "Valid - Empty WalkTime";
-      // if(lastMsg != newMsg) {
-        // lastMsg = newMsg;
+      goodWalkTime = true;
+      if(lastMsg != newMsg) {
+        lastMsg = newMsg;
         sendCommand("t3.txt=\"" + newMsg + "\"");
         sendCommand("t3.pco="+PCO_COLORS.green); //Make it green before connecting
-      // }
+      }
     } 
     else {
       // newMsg = "Error - Numbers Only";
@@ -1427,6 +1508,7 @@ int chooseWalkTime() {
         // val holds parsed number; endptr points to first non-digit
         walkTime = (int)val;
         newMsg = "Valid - " + String(walkTime) + " min";
+        goodWalkTime = true;
         if(lastMsg != newMsg) {
           lastMsg = newMsg;
           sendCommand("t3.txt=\"" + newMsg + "\"");
@@ -1435,23 +1517,16 @@ int chooseWalkTime() {
       }
 
     }
-    int compId = waitForButtonPress(*nextionSerial, 100);
-    if (compId == 4) {
-      if (walkTime != WALKTIME_NONE) {
+    if (goodWalkTime) {
+      int compId = waitForButtonPress(*nextionSerial, 100);
+      if (compId == 4) {
         String forLog = "Chosen WalkTime: " + String(walkTime) + " min";
         logMessage(forLog);
         // sendCommand("t5.txt=\"" + forLog + "\"");
         break;
-      } else {
-        newMsg = "Error - Specify WalkTime";
-        if(lastMsg != newMsg) {
-          lastMsg = newMsg;
-          sendCommand("t3.txt=\"" + newMsg + "\"");
-          sendCommand("t3.pco="+PCO_COLORS.red); //Make it green before connecting
         }
-      }
     
-    }
+      }
   }
   return walkTime;
   // 
@@ -1517,6 +1592,14 @@ String chooseAddress() {
   return chosenStart;
 }
 
+int indexOf(const std::vector<String>& v, const String& target) {
+  for (size_t i = 0; i < v.size(); ++i) {
+    if (v[i] == target) return int(i);
+  }
+  return -1; // not found
+}
+
+
 
 
 
@@ -1532,7 +1615,10 @@ void setup() {
 
   String startAddr = "";
   String endAddr = "";
-  int walkTime = -1;
+  float walkTime = WALKTIME_NONE;
+  float milesComputeSaved = WALKTIME_NONE;
+  String bus = "";
+  String firstBusOnlySaved = "false";
 
   
 
@@ -1559,11 +1645,19 @@ void setup() {
 
 
   
-  WiFi.disconnect(true); 
-  delay(100);
-  WiFi.mode(WIFI_STA); //Client/station mode.
+  // stop cleanly
+  WiFi.mode(WIFI_OFF);
+  delay(200);
+
   
-  delay(100);   //Would remove prior connections, it stores it by default, could check to see if it's connected off the bat
+
+  // fully disconnect and clear config
+  WiFi.disconnect(true);
+  delay(200);
+
+  WiFi.mode(WIFI_STA); //Set wifi to station mode
+  
+  // delay(100);   //Would remove prior connections, it stores it by default, could check to see if it's connected off the bat
   WifiCredentials creds;
   if (FAKE_WIFI) { // This is for testing really
     saveSetting(CONST_KEYS.ssid.c_str(), ssidTest);
@@ -1577,14 +1671,23 @@ void setup() {
 
   if (RESET_SAVED_WALKTIME) {
     saveSetting(CONST_KEYS.walkTime.c_str(), String(WALKTIME_NONE).c_str());
+    saveSetting(CONST_KEYS.milesCompute.c_str(), String(WALKTIME_NONE).c_str());
+    saveSetting(CONST_KEYS.bus.c_str(), ""); //Reset bus as well
+    saveSetting(CONST_KEYS.firstBusOnly.c_str(), "false");
+    
   }
 
   creds.ssid = loadStringSetting(CONST_KEYS.ssid.c_str());
   creds.pass = loadStringSetting(CONST_KEYS.pass.c_str());
   startAddr = loadStringSetting(CONST_KEYS.startAddr.c_str());
   endAddr = loadStringSetting(CONST_KEYS.endAddr.c_str());
-  walkTime = loadStringSetting(CONST_KEYS.walkTime.c_str()).toInt(); //This is fine as it'll be stored properly everytime, no parsing needed.
+  walkTime = loadStringSetting(CONST_KEYS.walkTime.c_str()).toFloat(); //This is fine as it'll be stored properly everytime, no parsing needed.
+  milesComputeSaved = loadStringSetting(CONST_KEYS.milesCompute.c_str()).toFloat();
+  bus = loadStringSetting(CONST_KEYS.bus.c_str()); //Tries for this bus, otherwise it will just default to the first one found, able to also turn off this setting
+  firstBusOnlySaved = loadStringSetting(CONST_KEYS.firstBusOnly.c_str());
 
+  logMessage("Loaded walkTime : " + String(walkTime) + ", milesComputeSaved: " + String(milesComputeSaved) + ", bus: " + bus + ", firstBusOnlySaved: " + firstBusOnlySaved);
+  logMessage("Walktime equals WALKTIME_NONE? " + String(walkTime == WALKTIME_NONE ? "true" : "false"));
   logMessage("Loaded Start Addr: " + startAddr + ", End Addr: " + endAddr);
 
   
@@ -1593,12 +1696,17 @@ void setup() {
   if (creds.ssid.length() == 0) { //|| !FAKE_WIFI
     logMessage("No prior SSID");
   } else {
-    logMessage("Prior SSID, try to connect to wifi, SSID: " + creds.ssid + ", PASS: " + creds.pass);
-    // connectionSequence(true);
-    connected = tryWifi(creds.ssid.c_str(), creds.pass.c_str());
-    creds.ok = connected;
-    String tmpOk = creds.ok ? "true" : "false";
-    logMessage("Actually successfully connected: " + tmpOk);
+    if (!OVERRIDE_WIFI) {
+      logMessage("Prior SSID, try to connect to wifi, SSID: " + creds.ssid + ", PASS: " + creds.pass);
+      // connectionSequence(true);
+      connected = tryWifi(creds.ssid.c_str(), creds.pass.c_str());
+      creds.ok = connected;
+      String tmpOk = creds.ok ? "true" : "false";
+      logMessage("Actually successfully connected: " + tmpOk);
+    } else {
+      logMessage("OVERRIDE_WIFI is set, skipping WIFI connection attempt");
+    }
+    
   }
   
 
@@ -1612,9 +1720,9 @@ void setup() {
   
   // Send command to Nextion to show wifi networks
 
-  if (TESTING_NEXTION) {
-    connected = false;
-  }
+  // if (TESTING_NEXTION) {
+  //   connected = false;
+  // }
 
   if (!connected) {
     int compId = -1;
@@ -1661,8 +1769,13 @@ void setup() {
   // connected = WiFi.status() == WL_CONNECTED;
   // Would have to do further checks here than this, as they may have prior stored addresses
   if (creds.ok || OVERRIDE_WIFI) {
-    
+    String msgLog = OVERRIDE_WIFI ? "OVERRIDE_WIFI set, starting setup sequence" : "WiFi connected successfully, starting setup sequence";
+    logMessage(msgLog);
+    if (creds.ok) {
+      c = getCurrentLocation();
+    }
     if (startAddr.length() == 0 || endAddr.length() == 0) {
+
       
       // SEARCH QUERY SEQUENCE
       // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Tw&ech=7&pb=!2i2!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i1298!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sAvghab7tBdbV5NoP9PqxgQ0!7e81!17sAvghab7tBdbV5NoP9PqxgQ0%3A83!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i759"; // example (fragile)
@@ -1671,14 +1784,12 @@ void setup() {
       // dbgSerial->println("----");
 
       // // DIRECTIONS SEQUENCE
-      // locals.startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
-      // locals.endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
-      // getDirections(locals.startAddr, locals.endAddr, c.lat, c.lon);
+      
       
       
       
       if (!SKIP_ADDR_CHOOSE) {
-        c = getCurrentLocation();
+        
         safeSetPage("StartAddr");
         startAddr = chooseAddress();
         saveSetting(CONST_KEYS.startAddr.c_str(), startAddr.c_str());
@@ -1688,15 +1799,113 @@ void setup() {
         saveSetting(CONST_KEYS.endAddr.c_str(), endAddr.c_str());
 
 
+      } else {
+        // logMessage("SKIP_ADDR_CHOOSE set, using prior addresses");
+        startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
+        endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
       }
     }
+    std::vector<String> transitList;
+    std::vector<String> walkTimeList;
+    std::vector<String> walkDistList;
 
     if (walkTime == WALKTIME_NONE) {
+      String dist;
+      String walk; //Local computed from first bus initially
+      // String bus;
+      if(!SKIP_FIRST_BUS_SELECT) {
+        // From page FirstTransit, they need to select the bus so I get the distance and walktime, so I can set it relatively from there.
+        // Get miles/dist, save it, then go to walk page so use knows what they're specifying
+        // Both this and the SKIP_WALKTIME_SET really both have to be ran
+        safeSetPage("FirstTransit");
+
+        // locals.startAddr = 
+        // locals.endAddr = 
+        std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
+
+        
+        for (int i = 0; i < n.size(); ++i) {
+          transitList.push_back(n[i].busLabel);
+          // dbgSerial->println("---");
+          dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
+          walkTimeList.push_back(n[i].walkTime);
+          walkDistList.push_back(n[i].walkDistance);
+          // dbgSerial->print("Walk distance: "); dbgSerial->println(infos[i].walkDistance);
+          // dbgSerial->print("Walk time: "); dbgSerial->println(infos[i].walkTime);
+          // dbgSerial->print("Station: "); dbgSerial->println(infos[i].stationName);
+          // dbgSerial->print("Next bus: "); dbgSerial->println(infos[i].nextBusTime);
+        }
+        int remaining = MAX_TRANSIT_RESULTS - int(n.size());
+        // logMessage("Any remaining blanks " + String((MAX_TRANSIT_RESULTS - int(n.size()))));
+        for (int i = 0; i < remaining; i++) {
+          transitList.push_back(""); // pad out to max
+        }
+
+        sendComponentTxt(MAX_TRANSIT_RESULTS, 10, transitList, "b", false, 0);
+
+        while(true) {
+          int compId = waitForButtonPress(*nextionSerial, 10000);
+          if (TRANSIT_BUSES.count(compId)) {
+            logMessage("Button pressed, compId: " + String(compId));
+            // sendCommand("get b" + String(compId) + ".txt"); // get text of button pressed
+            sendCommand("get " + TRANSIT_BUSES[compId] + ".txt");
+            String busIdx = getButtonText(*nextionSerial); // flush any prior response
+              if (busIdx.length() > 0 && busIdx != "Loading...") {
+                String forLog = appendChosen + busIdx;
+                // Get index of text in transitList
+                int idx = indexOf(transitList, busIdx);
+                dist = walkDistList[idx];
+                walk = walkTimeList[idx];
+                bus = busIdx;
+                // logMessage(forLog);
+                sendCommand("t2.txt=\"" + forLog + "\"");
+                
+                logMessage("Selected bus with walk distance: " + dist + ", walk time: " + walk + ", bus: " + bus);
+                // break;
+              }
+          }
+          if (compId == 5) {
+            //Continue button 
+            if (dist.length() > 0 && walk.length() > 0) {
+              walkTime = minutesStringToFloat(walk);//.toInt();
+              milesComputeSaved = distanceStringToMiles(dist);
+              String forLog = "Using Walk Distance: " + String(milesComputeSaved) + ", Walk Time: " + String(walkTime) + ", Bus: " + bus;
+              logMessage(forLog);
+              // sendCommand("t1.txt=\"" + forLog + "\""); // show what we're using
+              
+              sendCommand("t3.txt=\"\"");
+              break;
+            } else {
+              sendCommand("t3.txt=\"Error, select transit option\"");
+            }
+          }
+        }
+
+      } else {
+        // Testing
+        walkTime = 10;
+        bus = "P1";
+        milesComputeSaved = 0.5;
+        // safeSetPage("Walk");
+      }
+
       if (!SKIP_WALKTIME_SET) {
         safeSetPage("Walk");
 
-        walkTime = chooseWalkTime();
-        
+        float walkTimeFound = chooseWalkTime();
+        if (walkTimeFound == WALKTIME_NONE) {
+          // walkTimeFound = WALKTIME_DEFAULT; //We specified none prior
+          walkTimeFound = walkTime; //Use prior loaded walktime
+        }
+        logMessage("Final Walk Time chosen: " + String(walkTimeFound) + " min");
+        saveSetting(CONST_KEYS.walkTime.c_str(), String(walkTimeFound).c_str());
+        saveSetting(CONST_KEYS.milesCompute.c_str(), String(milesComputeSaved).c_str());
+        saveSetting(CONST_KEYS.bus.c_str(), bus.c_str());
+        safeSetPage("InfoPage");
+      } else {
+        walkTime = 10;
+        bus = "P1";
+        milesComputeSaved = 0.5;
       }
     }
 
