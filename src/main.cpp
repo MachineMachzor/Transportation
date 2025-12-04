@@ -20,14 +20,23 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = true;//If false, should be production nextion
+const bool TESTING_NEXTION = false;//If false, should be production nextion
 const bool FAKE_WIFI = true; //If true, always go to no wifi page for testing
 
 
+// Set all of these to false in production to not skip the code
 const bool SKIP_WIFI_SELECTION = true;
 const bool SKIP_WIFI_LOGIN = true;
-const bool SKIP_ADDR_CHOOSE = false;
+const bool SKIP_ADDR_CHOOSE = true;
+const bool SKIP_WALKTIME_SET = false;
+
+// Set all of these to false in production to not reset saved settings
 const bool RESET_SAVED_ADDRS = true;
+const bool RESET_SAVED_WALKTIME = true;
+
+
+// This is for the use case of if wifi just does not work randomly, but still want to develop code
+const bool OVERRIDE_WIFI = true; //Last resort, usually wifi should be connecting
 
 /*
 // FULL TESTING OF NEXTION
@@ -59,7 +68,7 @@ char* ssidTest     = "NETGEAR26";
 char* passwordTest = "melodicpanda708";
 
 // char* ssidTest     = "Pixel_4976";
-// char* passwordTest = "abcdefgh";
+// char* passwordTest = "abcdefgh"; 
 
 
 
@@ -155,6 +164,8 @@ int port = 80;
 WebServer server(port); // serve on port
 const keys CONST_KEYS;
 
+const int WALKTIME_NONE = -999;
+
 const char* EMPTY_VALUE = "";
 
 const unsigned long CONNECT_TIMEOUT = 10000; // ms
@@ -191,6 +202,9 @@ String httpGetStream(const String &url) {
       result += String((char*)buf, len); // careful: still grows memory --> Append to result
       // Better: parse `buf` chunk-by-chunk instead of appending to `result`
     }
+  } else {
+    dbgSerial->printf("HTTP GET failed, error: %s\n", https.errorToString(httpCode).c_str());
+    result = "Failed";
   }
   https.end(); //End session and free resources
   delete client;
@@ -456,6 +470,7 @@ String joinWithNewline(const std::vector<String>& v) {
 
 void safeSetPage(String page) {
   if (pageTracker != page) {
+    sendCommand("");
     String cmd = "page " + page;
     sendCommand(cmd);
     pageTracker = page;
@@ -1371,6 +1386,78 @@ void getDirections(String start, String end, double newLat, double newLong) {
 currentLocation c;
 String appendChosen = "Chosen: ";
 
+
+int chooseWalkTime() {
+  int walkTime = WALKTIME_NONE;
+  String walkText;
+  String lastMsg = "";
+  String newMsg = "";
+  while(true) {
+    sendCommand("get t2.txt");
+    walkText = getButtonText(*nextionSerial);
+    sendCommand("t4.txt=\"" + walkText + " Length " + String(walkText.length()) + "\""); //Echo back for testing
+    if (walkText.length() == 0) {
+      newMsg = "Valid - Empty WalkTime";
+      // if(lastMsg != newMsg) {
+        // lastMsg = newMsg;
+        sendCommand("t3.txt=\"" + newMsg + "\"");
+        sendCommand("t3.pco="+PCO_COLORS.green); //Make it green before connecting
+      // }
+    } 
+    else {
+      // newMsg = "Error - Numbers Only";
+      // newMsg = "WalkTime: " + walkText + " min - Length of walktext is " + String(walkText.length());
+      // if(lastMsg != newMsg) {
+      //   lastMsg = newMsg;
+      //   sendCommand("t3.txt=\"" + newMsg + "\"");
+      //   sendCommand("t3.pco="+PCO_COLORS.red); //Make it green before connecting
+      // }
+      char *endptr;
+      long val = strtol(walkText.c_str(), &endptr, 10); // base 10
+
+      if (endptr == walkText.c_str()) {
+        // no conversion performed -> parse error
+        newMsg = "Error - Numbers Only";
+        if(lastMsg != newMsg) {
+          lastMsg = newMsg;
+          sendCommand("t3.txt=\"" + newMsg + "\"");
+          sendCommand("t3.pco="+PCO_COLORS.red); //Make it green before connecting
+        }
+      } else {
+        // val holds parsed number; endptr points to first non-digit
+        walkTime = (int)val;
+        newMsg = "Valid - " + String(walkTime) + " min";
+        if(lastMsg != newMsg) {
+          lastMsg = newMsg;
+          sendCommand("t3.txt=\"" + newMsg + "\"");
+          sendCommand("t3.pco="+PCO_COLORS.green); //Make it green before connecting
+        }
+      }
+
+    }
+    int compId = waitForButtonPress(*nextionSerial, 100);
+    if (compId == 4) {
+      if (walkTime != WALKTIME_NONE) {
+        String forLog = "Chosen WalkTime: " + String(walkTime) + " min";
+        logMessage(forLog);
+        // sendCommand("t5.txt=\"" + forLog + "\"");
+        break;
+      } else {
+        newMsg = "Error - Specify WalkTime";
+        if(lastMsg != newMsg) {
+          lastMsg = newMsg;
+          sendCommand("t3.txt=\"" + newMsg + "\"");
+          sendCommand("t3.pco="+PCO_COLORS.red); //Make it green before connecting
+        }
+      }
+    
+    }
+  }
+  return walkTime;
+  // 
+  // sendCommand("get " + HOME_PAGE_START_TXT + ".txt");
+}
+
 String chooseAddress() {
   int PLACE_MAX = 3;
   std::vector<String> startPlacesSearch;
@@ -1445,6 +1532,7 @@ void setup() {
 
   String startAddr = "";
   String endAddr = "";
+  int walkTime = -1;
 
   
 
@@ -1487,10 +1575,15 @@ void setup() {
     saveSetting(CONST_KEYS.endAddr.c_str(), "");
   }
 
+  if (RESET_SAVED_WALKTIME) {
+    saveSetting(CONST_KEYS.walkTime.c_str(), String(WALKTIME_NONE).c_str());
+  }
+
   creds.ssid = loadStringSetting(CONST_KEYS.ssid.c_str());
   creds.pass = loadStringSetting(CONST_KEYS.pass.c_str());
   startAddr = loadStringSetting(CONST_KEYS.startAddr.c_str());
   endAddr = loadStringSetting(CONST_KEYS.endAddr.c_str());
+  walkTime = loadStringSetting(CONST_KEYS.walkTime.c_str()).toInt(); //This is fine as it'll be stored properly everytime, no parsing needed.
 
   logMessage("Loaded Start Addr: " + startAddr + ", End Addr: " + endAddr);
 
@@ -1522,6 +1615,7 @@ void setup() {
   if (TESTING_NEXTION) {
     connected = false;
   }
+
   if (!connected) {
     int compId = -1;
     if (!SKIP_WIFI_SELECTION) {
@@ -1558,13 +1652,7 @@ void setup() {
       creds.ok = wl.connected;
 
       
-    } else {
-      creds.ssid = ssidTest;
-      creds.pass = passwordTest;
-      creds.ok = true;
-    }
-
-    logMessage("Connected to Wi-Fi");
+    } 
     
     
   }
@@ -1572,9 +1660,8 @@ void setup() {
   // Realistically we'll want to wait for a command to select to wifi then try again
   // connected = WiFi.status() == WL_CONNECTED;
   // Would have to do further checks here than this, as they may have prior stored addresses
-  if (creds.ok) {
-    logMessage("Wifi OK");
-    c = getCurrentLocation();
+  if (creds.ok || OVERRIDE_WIFI) {
+    
     if (startAddr.length() == 0 || endAddr.length() == 0) {
       
       // SEARCH QUERY SEQUENCE
@@ -1591,6 +1678,7 @@ void setup() {
       
       
       if (!SKIP_ADDR_CHOOSE) {
+        c = getCurrentLocation();
         safeSetPage("StartAddr");
         startAddr = chooseAddress();
         saveSetting(CONST_KEYS.startAddr.c_str(), startAddr.c_str());
@@ -1602,6 +1690,17 @@ void setup() {
 
       }
     }
+
+    if (walkTime == WALKTIME_NONE) {
+      if (!SKIP_WALKTIME_SET) {
+        safeSetPage("Walk");
+
+        walkTime = chooseWalkTime();
+        
+      }
+    }
+
+
     
     
     
