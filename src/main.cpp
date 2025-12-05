@@ -17,10 +17,13 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <regex>
+#include <time.h>
+#include <ctype.h>
+
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = true;//If false, should be production nextion
+const bool TESTING_NEXTION = false;//If false, should be production nextion
 const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one
 
 // This is for the use case of if wifi just does not work randomly, but still want to develop code
@@ -31,8 +34,8 @@ const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecti
 const bool SKIP_WIFI_SELECTION = true;
 const bool SKIP_WIFI_LOGIN = true;
 const bool SKIP_ADDR_CHOOSE = true;
-const bool SKIP_FIRST_BUS_SELECT = false;
-const bool SKIP_WALKTIME_SET = false;
+const bool SKIP_FIRST_BUS_SELECT = true;
+const bool SKIP_WALKTIME_SET = true;
 
 // Set all of these to false in production to not reset saved settings
 const bool RESET_SAVED_ADDRS = true;
@@ -46,7 +49,6 @@ const bool RESET_SAVED_WALKTIME = true;
 const bool TESTING_NEXTION = true; //If false, should be production nextion
 const bool FAKE_WIFI = false; //If true, always go to no wifi page for testing
 
-ets Jul 29 2019 12:21:46\x0D\x0A\x0D\x0Arst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)\x0D\x0Aconfigsip: 0, SPIWP:0xee\x0D\x0Aclk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00\x0D\x0Amode:DIO, clock div:2\x0D\x0Aload:0x3fff0030,len:1184\x0D\x0Aload:0x40078000,len:13232\x0D\x0Aload:0x40080400,len:3028\x0D\x0Aentry 0x400805e4\x0D\x0A
 */
 
 Stream *dbgSerial = nullptr;     // for debug output to PC
@@ -98,6 +100,7 @@ struct BoardingInfo {
   String walkTime;
   String stationName;
   String nextBusTime;
+  // int nextBusInMinutes; //Dist from utcNow() to the nextBusTime
 };
 
 
@@ -108,8 +111,8 @@ struct keys {
   String endAddr = "END";
   String walkTime = "WALKTIME"; //Walk time has to be 0 or greater, prohibit anything less than 0
   String milesCompute = "MILES"; //This is the miles specified for their walktime at the time, could be default or not, going to use this as relative if the first bus changes
-  String bus = "BUS"; //Caches the bus
-  String firstBusOnly = "FIRSTBUSONLY"; //Overrides saved transit bus and just takes first one
+  String bus = "BUS"; //Caches the bus. Actual string bus
+  String firstBusOnly = "FIRSTBUSONLY"; //Overrides saved transit bus and just takes first one. This is a boolean not the actul string bus
 };
 
 struct login_errors {
@@ -484,6 +487,96 @@ void handleNextionPacket(uint8_t *p, int len) {
     nextionSerial->println("Unknown packet");
   }
 }
+
+// --- parse next-bus time (supports "6:45 PM", "06:45pm", "18:45", "6:45")
+bool parseTimeString(const String &in, int &outHour, int &outMin) {
+  String s = in;
+  s.trim();
+  if (s.length() == 0) return false;
+
+  String low = s;
+  low.toLowerCase();
+  bool hasAM = (low.indexOf("am") >= 0);
+  bool hasPM = (low.indexOf("pm") >= 0);
+  if (hasAM) low.replace("am", "");
+  if (hasPM) low.replace("pm", "");
+  low.trim();
+
+  int colon = low.indexOf(':');
+  if (colon < 0) return false;
+  String hstr = low.substring(0, colon);
+  String mstr = low.substring(colon + 1);
+  hstr.trim(); mstr.trim();
+  if (hstr.length() == 0 || mstr.length() == 0) return false;
+
+  int h = hstr.toInt();
+  int m = mstr.toInt();
+  if (m < 0 || m > 59) return false;
+
+  if (hasAM || hasPM) {
+    if (h < 1 || h > 12) return false;
+    if (hasAM) {
+      if (h == 12) h = 0;
+    } else { // PM
+      if (h != 12) h += 12;
+    }
+  } else {
+    if (h < 0 || h > 23) return false;
+  }
+
+  outHour = h;
+  outMin = m;
+  return true;
+}
+
+// core: compute minutes difference target - now using epoch ms string
+// returns INT_MIN on parse error
+int minutesDifferenceFromEpochMs(const String &epochMsStr, const String &nextBusTimeStr) {
+  // parse epoch ms
+  unsigned long long ms = 0ULL;
+  bool seenDigit = false;
+  for (size_t i = 0; i < epochMsStr.length(); ++i) {
+    char c = epochMsStr[i];
+    if (c >= '0' && c <= '9') {
+      seenDigit = true;
+      ms = ms * 10ULL + (unsigned long long)(c - '0');
+    } else if (seenDigit) {
+      break; // stop at first non-digit after digits started
+    }
+  }
+  if (!seenDigit) return INT_MIN;
+
+  time_t now_t = (time_t)(ms / 1000ULL);
+
+  // parse next bus time
+  int targetHour = 0, targetMin = 0;
+  if (!parseTimeString(nextBusTimeStr, targetHour, targetMin)) return INT_MIN;
+
+  // build tm for now (localtime if TZ set)
+  struct tm now_tm;
+#if defined(ARDUINO_ARCH_ESP32) || defined(__unix__) || defined(__APPLE__)
+  localtime_r(&now_t, &now_tm);
+#else
+  struct tm *tmp = localtime(&now_t);
+  if (!tmp) return INT_MIN;
+  now_tm = *tmp;
+#endif
+
+  // create target tm for same date as now
+  struct tm target_tm = now_tm;
+  target_tm.tm_hour = targetHour;
+  target_tm.tm_min  = targetMin;
+  target_tm.tm_sec  = 0;
+
+  time_t target_t = mktime(&target_tm);
+  if (target_t == (time_t)-1) return INT_MIN;
+
+  long diffSeconds = static_cast<long>(difftime(target_t, now_t));
+  int diffMinutes = static_cast<int>(diffSeconds / 60); // trunc toward zero
+  return diffMinutes;
+}
+
+
 
 std::vector<String> connectionSequence(bool verbose=false) {
   int n = WiFi.scanNetworks();
@@ -1419,7 +1512,7 @@ BoardingInfo infos[MAX_RESULTS];
 
 
 
-std::vector<BoardingInfo> getDirections(String start, String end, double newLat, double newLong) {
+std::vector<BoardingInfo> getDirections(String start, String end, double newLat, double newLong, bool verbose=false) {
   start.replace(" ", "+");
   start.replace(",", "%2C");
   end.replace(" ", "+");
@@ -1438,14 +1531,17 @@ std::vector<BoardingInfo> getDirections(String start, String end, double newLat,
   logMessage("Found " + String(n.size()) + " boarding entries.");
   // dbgSerial->print(n);
   // dbgSerial->println(" boarding entries:");
-  // for (int i = 0; i < n; ++i) {
-  //   dbgSerial->println("---");
-  //   dbgSerial->print("Bus: "); dbgSerial->println(infos[i].busLabel);
-  //   dbgSerial->print("Walk distance: "); dbgSerial->println(infos[i].walkDistance);
-  //   dbgSerial->print("Walk time: "); dbgSerial->println(infos[i].walkTime);
-  //   dbgSerial->print("Station: "); dbgSerial->println(infos[i].stationName);
-  //   dbgSerial->print("Next bus: "); dbgSerial->println(infos[i].nextBusTime);
-  // }
+  if (verbose) {
+    for (int i = 0; i < n.size(); ++i) {
+      dbgSerial->println("---");
+      dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
+      dbgSerial->print("Walk distance: "); dbgSerial->println(n[i].walkDistance);
+      dbgSerial->print("Walk time: "); dbgSerial->println(n[i].walkTime);
+      dbgSerial->print("Station: "); dbgSerial->println(n[i].stationName);
+      dbgSerial->print("Next bus: "); dbgSerial->println(n[i].nextBusTime);
+    }
+  }
+  
 
 
   // dbgSerial->println(body); // or parse it
@@ -1464,6 +1560,15 @@ std::vector<BoardingInfo> getDirections(String start, String end, double newLat,
 currentLocation c;
 String appendChosen = "Chosen: ";
 
+
+float newWalkTime(float oldWalkTime, float oldMiles, float newMiles) {
+  if (oldMiles <= 0 || newMiles <= 0) {
+    return WALKTIME_NONE; // invalid input
+  }
+  float pace = oldWalkTime / oldMiles; // minutes per mile
+  float newWalkTime = pace * newMiles;
+  return newWalkTime;
+}
 
 int chooseWalkTime() {
   float walkTime = WALKTIME_NONE;
@@ -1599,6 +1704,91 @@ int indexOf(const std::vector<String>& v, const String& target) {
   return -1; // not found
 }
 
+bool parseUnsignedLongLong(const String &s, unsigned long long &out) {
+  out = 0ULL;
+  bool seen = false;
+  for (size_t i = 0; i < s.length(); ++i) {
+    char c = s[i];
+    if (c >= '0' && c <= '9') {
+      seen = true;
+      out = out * 10ULL + (unsigned long long)(c - '0');
+    } else {
+      // stop at first non-digit after we've started
+      if (seen) break;
+      // if not started and non-digit, skip
+    }
+  }
+  return seen;
+}
+
+String secondToken(const String &s) {
+  int n = s.length();
+  int i = 0;
+  // skip leading whitespace
+  while (i < n && isspace((unsigned char)s[i])) ++i;
+  // skip first token
+  while (i < n && !isspace((unsigned char)s[i])) ++i;
+  // skip whitespace between tokens
+  while (i < n && isspace((unsigned char)s[i])) ++i;
+  if (i >= n) return String("");
+  int start = i;
+  while (i < n && !isspace((unsigned char)s[i])) ++i;
+  return s.substring(start, i);
+}
+
+
+
+// Example: convert ms -> time_t seconds and print ISO-like string (UTC)
+void printTimestampMsAsUtc(unsigned long long ms) {
+  if (ms == 0ULL) {
+    Serial.println("No timestamp found");
+    return;
+  }
+  time_t secs = (time_t)(ms / 1000ULL);
+  struct tm tm_utc;
+#if defined(ARDUINO_ARCH_ESP32) || defined(__unix__) || defined(__APPLE__)
+  gmtime_r(&secs, &tm_utc); // thread-safe variant
+#else
+  struct tm *tmp = gmtime(&secs);
+  if (!tmp) { Serial.println("gmtime failed"); return; }
+  tm_utc = *tmp;
+#endif
+  char buf[64];
+  snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02dZ",
+           tm_utc.tm_year + 1900, tm_utc.tm_mon + 1, tm_utc.tm_mday,
+           tm_utc.tm_hour, tm_utc.tm_min, tm_utc.tm_sec);
+  Serial.println(buf);
+}
+
+
+
+String getTimeNowUTC(bool verbose=false) {
+  // "https://time.is/" --> Derived from this time, the parameters here are not open source, need to just have the user visit the site and we need to scrape it? Or just try this one
+  String getUrlForTime = "https://time.is/t1/?en.0.10.955.0P.-300.161.176473717963.176497716389..N";
+  String body = httpGetStream(getUrlForTime);
+  logMessage("Time body: " + body);
+  /*
+  1c2
+  1764975381962
+  0
+  161_(UTC,_UTC+00:00)
+  176473717963
+  */
+  // Get 1764975381962, being the first line, from the example above
+
+  String epochMillis = secondToken(body);
+  if (verbose) {
+    dbgSerial->println("Time Response: " + body);
+    
+  }
+  logMessage("UTCNow Time found " + String(epochMillis));
+  return epochMillis;
+  // int epochSeconds = int(epochMillis / 1000);
+  // logMessage("Parsed epoch seconds: " + String(epochSeconds));
+  
+
+
+}
 
 
 
@@ -1773,6 +1963,10 @@ void setup() {
     logMessage(msgLog);
     if (creds.ok) {
       c = getCurrentLocation();
+      // configTime(0, 0, "pool.ntp.org", "time.nist.gov"); // sync UTC
+      // setenv("TZ", "PST8PDT", 1); // or "EST5EDT" or a full TZ string
+      // tzset();
+
     }
     if (startAddr.length() == 0 || endAddr.length() == 0) {
 
@@ -1893,10 +2087,17 @@ void setup() {
         safeSetPage("Walk");
 
         float walkTimeFound = chooseWalkTime();
-        if (walkTimeFound == WALKTIME_NONE) {
+
+        logMessage("User specified walk time: " + String(walkTimeFound) + " min " + "(was " + String(walkTime) + " min)");
+        String equalityCheck = (walkTimeFound == walkTime) ? "true" : "false";
+        // logMessage("User specified walk time equals prior walk time? " + equalityCheck);
+
+        if (int(walkTimeFound) == int(WALKTIME_NONE)) {
           // walkTimeFound = WALKTIME_DEFAULT; //We specified none prior
           walkTimeFound = walkTime; //Use prior loaded walktime
         }
+        
+
         logMessage("Final Walk Time chosen: " + String(walkTimeFound) + " min");
         saveSetting(CONST_KEYS.walkTime.c_str(), String(walkTimeFound).c_str());
         saveSetting(CONST_KEYS.milesCompute.c_str(), String(milesComputeSaved).c_str());
@@ -1945,12 +2146,37 @@ void setup() {
     // sendCommand("page NoWifi");
     // safeSetPage("NoWifi");
   }
+
+
   
   // if (!FAKE_WIFI) {
   //   WiFi.disconnect(); 
   //   connected = tryWifi(ssidTest, passwordTest); // TEMP for testing so we can have our server
   // }
+  // logMessage("Test compute walktime of 10 min for 0.5 miles with new miles of 1.2: " + String(newWalkTime(10, 0.5, 1.2)) + " min");
+  startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
+  endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
+  std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
+
+  String utcTimeNow = getTimeNowUTC(true);
+
+  for (int i = 0; i < n.size(); ++i) {
+    dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
+    dbgSerial->print("Walk distance: "); dbgSerial->println(n[i].walkDistance);
+    dbgSerial->print("Walk time: "); dbgSerial->println(n[i].walkTime);
+    dbgSerial->print("Station: "); dbgSerial->println(n[i].stationName);
+    dbgSerial->print("Next bus: "); dbgSerial->println(n[i].nextBusTime);
+    // int nextBusTime = minutesDifferenceFromNow();
+    int nextBusTime = minutesDifferenceFromEpochMs(utcTimeNow, n[i].nextBusTime.c_str());
+
+    dbgSerial->print("Next bus in minutes: "); dbgSerial->println(nextBusTime);
+  }
+
   
+  
+
+
+        
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
   server.begin();
