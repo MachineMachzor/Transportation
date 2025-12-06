@@ -73,11 +73,7 @@ String pageTracker;
 
 // For testing
 char* ssidTest     = "NETGEAR26";
-char* passwordTest = "melodicpanda708";
-
-// char* ssidTest     = "Pixel_4976";
-// char* passwordTest = "abcdefgh"; 
-
+char* passwordTest = "melodicpanda708"; 
 
 
 struct WifiCredentials {
@@ -488,25 +484,50 @@ void handleNextionPacket(uint8_t *p, int len) {
   }
 }
 
-// --- parse next-bus time (supports "6:45 PM", "06:45pm", "18:45", "6:45")
-bool parseTimeString(const String &in, int &outHour, int &outMin) {
-  String s = in;
-  s.trim();
-  if (s.length() == 0) return false;
+#define DEBUG_MINUTES true
 
+// Trim whitespace
+static String trimStr(const String &s) {
+  int a = 0;
+  while (a < s.length() && isspace((unsigned char)s[a])) ++a;
+  int b = s.length() - 1;
+  while (b >= a && isspace((unsigned char)s[b])) --b;
+  if (b < a) return String("");
+  return s.substring(a, b + 1);
+}
+
+// Extract first contiguous digit sequence (useful if CR/LF or hidden chars present)
+bool extractFirstDigits(const String &s, String &outDigits) {
+  outDigits = "";
+  bool seen = false;
+  for (size_t i = 0; i < s.length(); ++i) {
+    char c = s[i];
+    if (c >= '0' && c <= '9') {
+      outDigits += c;
+      seen = true;
+    } else if (seen) {
+      break; // stop after first run of digits
+    }
+  }
+  return seen;
+}
+
+// Parse "6:45 PM", "06:45pm", "18:45", "6:45"
+bool parseTimeString(const String &in, int &outHour, int &outMin) {
+  String s = trimStr(in);
+  if (s.length() == 0) return false;
   String low = s;
   low.toLowerCase();
   bool hasAM = (low.indexOf("am") >= 0);
   bool hasPM = (low.indexOf("pm") >= 0);
   if (hasAM) low.replace("am", "");
   if (hasPM) low.replace("pm", "");
-  low.trim();
+  low = trimStr(low);
 
   int colon = low.indexOf(':');
   if (colon < 0) return false;
-  String hstr = low.substring(0, colon);
-  String mstr = low.substring(colon + 1);
-  hstr.trim(); mstr.trim();
+  String hstr = trimStr(low.substring(0, colon));
+  String mstr = trimStr(low.substring(colon + 1));
   if (hstr.length() == 0 || mstr.length() == 0) return false;
 
   int h = hstr.toInt();
@@ -529,30 +550,44 @@ bool parseTimeString(const String &in, int &outHour, int &outMin) {
   return true;
 }
 
-// core: compute minutes difference target - now using epoch ms string
-// returns INT_MIN on parse error
+// Main: epochMsStr may contain hidden chars; nextBusTimeStr examples: "6:45 PM", "18:45"
 int minutesDifferenceFromEpochMs(const String &epochMsStr, const String &nextBusTimeStr) {
-  // parse epoch ms
-  unsigned long long ms = 0ULL;
-  bool seenDigit = false;
-  for (size_t i = 0; i < epochMsStr.length(); ++i) {
-    char c = epochMsStr[i];
-    if (c >= '0' && c <= '9') {
-      seenDigit = true;
-      ms = ms * 10ULL + (unsigned long long)(c - '0');
-    } else if (seenDigit) {
-      break; // stop at first non-digit after digits started
-    }
+  // 1) extract digits from epoch string
+  String digits;
+  if (!extractFirstDigits(epochMsStr, digits)) {
+    if (DEBUG_MINUTES) Serial.println("ERR: no digits in epoch string");
+    return INT_MIN;
   }
-  if (!seenDigit) return INT_MIN;
+
+  // optional: ensure we have at least 10 digits (seconds) or 13 digits (ms)
+  if (digits.length() < 10) {
+    if (DEBUG_MINUTES) {
+      Serial.print("ERR: epoch digits too short: "); Serial.println(digits);
+    }
+    return INT_MIN;
+  }
+
+  // parse to unsigned long long (ms)
+  unsigned long long ms = 0ULL;
+  for (size_t i = 0; i < digits.length(); ++i) {
+    ms = ms * 10ULL + (unsigned long long)(digits[i] - '0');
+  }
+
+  // if digits length looks like seconds (10 digits), convert to ms
+  if (digits.length() == 10) ms *= 1000ULL;
 
   time_t now_t = (time_t)(ms / 1000ULL);
 
-  // parse next bus time
+  // 2) parse next bus time
   int targetHour = 0, targetMin = 0;
-  if (!parseTimeString(nextBusTimeStr, targetHour, targetMin)) return INT_MIN;
+  if (!parseTimeString(nextBusTimeStr, targetHour, targetMin)) {
+    if (DEBUG_MINUTES) {
+      Serial.print("ERR: cannot parse nextBusTimeStr: '"); Serial.print(nextBusTimeStr); Serial.println("'");
+    }
+    return INT_MIN;
+  }
 
-  // build tm for now (localtime if TZ set)
+  // 3) build tm for now (localtime if TZ set)
   struct tm now_tm;
 #if defined(ARDUINO_ARCH_ESP32) || defined(__unix__) || defined(__APPLE__)
   localtime_r(&now_t, &now_tm);
@@ -562,20 +597,36 @@ int minutesDifferenceFromEpochMs(const String &epochMsStr, const String &nextBus
   now_tm = *tmp;
 #endif
 
-  // create target tm for same date as now
+  // 4) build target tm for same date as now
   struct tm target_tm = now_tm;
   target_tm.tm_hour = targetHour;
   target_tm.tm_min  = targetMin;
   target_tm.tm_sec  = 0;
 
   time_t target_t = mktime(&target_tm);
-  if (target_t == (time_t)-1) return INT_MIN;
+  if (target_t == (time_t)-1) {
+    if (DEBUG_MINUTES) Serial.println("ERR: mktime failed");
+    return INT_MIN;
+  }
 
   long diffSeconds = static_cast<long>(difftime(target_t, now_t));
   int diffMinutes = static_cast<int>(diffSeconds / 60); // trunc toward zero
+
+  if (DEBUG_MINUTES) {
+    Serial.print("DEBUG epoch digits: "); Serial.println(digits);
+    Serial.print("DEBUG ms: "); Serial.println((unsigned long long)ms);
+    Serial.print("DEBUG now_t (s): "); Serial.println((long)now_t);
+    Serial.print("DEBUG now date: ");
+    Serial.print(now_tm.tm_year + 1900); Serial.print('-');
+    Serial.print(now_tm.tm_mon + 1); Serial.print('-');
+    Serial.print(now_tm.tm_mday); Serial.print(' ');
+    Serial.print(now_tm.tm_hour); Serial.print(':'); Serial.print(now_tm.tm_min); Serial.print(':'); Serial.println(now_tm.tm_sec);
+    Serial.print("DEBUG target h:m: "); Serial.print(targetHour); Serial.print(':'); Serial.println(targetMin);
+    Serial.print("DEBUG diffMinutes: "); Serial.println(diffMinutes);
+  }
+
   return diffMinutes;
 }
-
 
 
 std::vector<String> connectionSequence(bool verbose=false) {
@@ -1738,28 +1789,6 @@ String secondToken(const String &s) {
 
 
 
-// Example: convert ms -> time_t seconds and print ISO-like string (UTC)
-void printTimestampMsAsUtc(unsigned long long ms) {
-  if (ms == 0ULL) {
-    Serial.println("No timestamp found");
-    return;
-  }
-  time_t secs = (time_t)(ms / 1000ULL);
-  struct tm tm_utc;
-#if defined(ARDUINO_ARCH_ESP32) || defined(__unix__) || defined(__APPLE__)
-  gmtime_r(&secs, &tm_utc); // thread-safe variant
-#else
-  struct tm *tmp = gmtime(&secs);
-  if (!tmp) { Serial.println("gmtime failed"); return; }
-  tm_utc = *tmp;
-#endif
-  char buf[64];
-  snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02dZ",
-           tm_utc.tm_year + 1900, tm_utc.tm_mon + 1, tm_utc.tm_mday,
-           tm_utc.tm_hour, tm_utc.tm_min, tm_utc.tm_sec);
-  Serial.println(buf);
-}
-
 
 
 String getTimeNowUTC(bool verbose=false) {
@@ -2158,7 +2187,7 @@ void setup() {
   endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
   std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
 
-  String utcTimeNow = getTimeNowUTC(true);
+  String utcTimeNow = getTimeNowUTC();
 
   for (int i = 0; i < n.size(); ++i) {
     dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
@@ -2171,11 +2200,6 @@ void setup() {
 
     dbgSerial->print("Next bus in minutes: "); dbgSerial->println(nextBusTime);
   }
-
-  
-  
-
-
         
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
