@@ -330,7 +330,7 @@ void handleLogs() {
 }
 
 
-currentLocation getCurrentLocation() {
+StaticJsonDocument<512> returnUserData() {
   currentLocation c;
   String url = "https://ipinfo.io/json";
   String response = httpGetStream(url);
@@ -339,8 +339,14 @@ currentLocation getCurrentLocation() {
   DeserializationError error = deserializeJson(doc, response);
   if (error) {
     logMessage("Failed to parse location JSON");
-    return c;
+    // return c;
   }
+  return doc;
+}
+
+currentLocation getCurrentLocation() {
+  currentLocation c;
+  StaticJsonDocument<512> doc = returnUserData();
   String loc_str = doc["loc"].as<String>();
   std::string loc = loc_str.c_str();
   std::regex locRegex(R"(([-+]?[0-9]*\.?[0-9]+),([-+]?[0-9]*\.?[0-9]+))");
@@ -354,6 +360,29 @@ currentLocation getCurrentLocation() {
   return c;
   // c.lat = String(doc["lat"].as<double>(), 6);
 }
+
+String getUserTimezone() {
+  StaticJsonDocument<512> doc = returnUserData();
+  String tzArduino = doc["timezone"].as<String>();
+  std::string tz = std::string(tzArduino.c_str());
+
+  // Trim
+  auto l = tz.find_first_not_of(" \t\r\n");
+  if (l == std::string::npos) return String("");
+  auto r = tz.find_last_not_of(" \t\r\n");
+  tz = tz.substr(l, r - l + 1);
+
+  // IANA regex: Region/City or multi-part (e.g., America/Indiana/Knox)
+  // Allows letters, digits, underscore, plus, minus; requires at least one '/'
+  static const std::regex ianaRegex(R"(^[A-Za-z_+\-]+(?:\/[A-Za-z0-9_+\-]+)+$)");
+  if (std::regex_match(tz, ianaRegex)) {
+    return String(tz.c_str());
+  }
+
+  // Not a valid IANA name
+  return String("");
+}
+
 
 
 /*
@@ -591,6 +620,8 @@ int minutesDifferenceFromEpochMs(const String &epochMsStr, const String &nextBus
   struct tm now_tm;
 #if defined(ARDUINO_ARCH_ESP32) || defined(__unix__) || defined(__APPLE__)
   localtime_r(&now_t, &now_tm);
+  
+
 #else
   struct tm *tmp = localtime(&now_t);
   if (!tmp) return INT_MIN;
@@ -610,7 +641,13 @@ int minutesDifferenceFromEpochMs(const String &epochMsStr, const String &nextBus
   }
 
   long diffSeconds = static_cast<long>(difftime(target_t, now_t));
-  int diffMinutes = static_cast<int>(diffSeconds / 60); // trunc toward zero
+  int diffMinutes; //= static_cast<int>(diffSeconds / 60); // trunc toward zero
+  if (diffSeconds >= 0) {
+      diffMinutes = static_cast<int>((diffSeconds + 30) / 60); // round half up
+  } else {
+    diffMinutes = static_cast<int>((diffSeconds - 30) / 60); // round half down for negatives
+  }
+
 
   if (DEBUG_MINUTES) {
     Serial.print("DEBUG epoch digits: "); Serial.println(digits);
@@ -1821,11 +1858,23 @@ String getTimeNowUTC(bool verbose=false) {
 
 
 
+const char* iana_to_posix(const char* iana) {
+  if (strcmp(iana, "America/New_York") == 0) return "EST5EDT,M3.2.0/2,M11.1.0/2";
+  if (strcmp(iana, "Europe/Helsinki") == 0) return "EET-2EEST,M3.5.0/3,M10.5.0/4";
+  // add other zones you need
+  return "UTC0";
+}
+
+
+
+
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(USB_BAUD);
   // Serial.println("hello");
+
+ 
 
   
   // WiFi.begin(ssid, password);
@@ -1992,6 +2041,12 @@ void setup() {
     logMessage(msgLog);
     if (creds.ok) {
       c = getCurrentLocation();
+      String userTimezone = getUserTimezone();
+      const char* posix = iana_to_posix(userTimezone.c_str());
+      logMessage("User timezone: " + userTimezone + ", POSIX: " + String(posix));
+      logMessage("User lat: " + String(c.lat) + ", lon: " + String(c.lon));
+      // configTzTime("EST5EDT,M3.2.0/2,M11.1.0/2", "pool.ntp.org");
+      configTzTime(posix, "pool.ntp.org");
       // configTime(0, 0, "pool.ntp.org", "time.nist.gov"); // sync UTC
       // setenv("TZ", "PST8PDT", 1); // or "EST5EDT" or a full TZ string
       // tzset();
