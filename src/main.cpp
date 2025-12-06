@@ -23,7 +23,7 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = false;//If false, should be production nextion
+const bool TESTING_NEXTION = true;//If false, should be production nextion
 const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one
 
 // This is for the use case of if wifi just does not work randomly, but still want to develop code
@@ -580,6 +580,24 @@ bool parseTimeString(const String &in, int &outHour, int &outMin) {
   outMin = m;
   return true;
 }
+
+
+// store this across calls (initialize to -1)
+static long prev_epoch_min = -1;
+
+// Call this whenever you want to check. Returns true exactly once when minute changes.
+bool minute_changed_now(void) {
+  time_t now = time(NULL);
+  if (now == (time_t)-1) return false; // clock error
+
+  long epoch_min = (long)(now / 60);   // integer minute since epoch
+  if (epoch_min != prev_epoch_min) {
+    prev_epoch_min = epoch_min;
+    return true; // minute boundary crossed since last check (or first call)
+  }
+  return false;
+}
+
 
 // Main: epochMsStr may contain hidden chars; nextBusTimeStr examples: "6:45 PM", "18:45"
 int minutesDifferenceFromEpochMs(const String &epochMsStr, const String &nextBusTimeStr) {
@@ -1834,7 +1852,7 @@ String getTimeNowUTC(bool verbose=false) {
   // "https://time.is/" --> Derived from this time, the parameters here are not open source, need to just have the user visit the site and we need to scrape it? Or just try this one
   String getUrlForTime = "https://time.is/t1/?en.0.10.955.0P.-300.161.176473717963.176497716389..N";
   String body = httpGetStream(getUrlForTime);
-  logMessage("Time body: " + body);
+  
   /*
   1c2
   1764975381962
@@ -1846,6 +1864,7 @@ String getTimeNowUTC(bool verbose=false) {
 
   String epochMillis = secondToken(body);
   if (verbose) {
+    logMessage("Time body: " + body);
     dbgSerial->println("Time Response: " + body);
     
   }
@@ -2195,6 +2214,91 @@ void setup() {
       }
     }
 
+    if (!SKIP_INFO_PAGE) {
+      safeSetPage("InfoPage");
+      if (minute_changed_now()) {
+        sendCommand("get c0.val");
+        String useBestBusStr = getButtonText(*nextionSerial); // flush any prior response
+        bool useBestBus = (useBestBusStr == "1");
+        // startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
+        // endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
+        std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
+
+        // Check if bus is in the list
+        if (bus.length() > 0) {
+          logMessage("Checking for saved bus: " + bus);
+          int busIdx = indexOf(transitList, bus);
+          if (busIdx >= 0) {
+            logMessage("Saved bus found in transit list: " + bus + ", index: " + String(busIdx));
+            // Filter n to only have this bus
+            std::vector<BoardingInfo> nFiltered;
+            nFiltered.push_back(n[busIdx]);
+            n = nFiltered;
+          } else {
+            logMessage("Saved bus not found in transit list: " + bus + ", using first available bus");
+            // If not found, and useBestBus is false, just use first bus
+            if (!useBestBus && n.size() > 1) {
+              std::vector<BoardingInfo> nFiltered;
+              nFiltered.push_back(n[0]);
+              n = nFiltered;
+            }
+          }
+        } else {
+          logMessage("No saved bus specified, using first available bus");
+          // If no bus specified, and useBestBus is false, just use first bus
+          if (!useBestBus && n.size() > 1) {
+            std::vector<BoardingInfo> nFiltered;
+            nFiltered.push_back(n[0]);
+            n = nFiltered;
+          }
+        }
+
+        if (n.size() > 0) {
+          String utcTimeNow = getTimeNowUTC();
+          String nextBusTimeStr = n[0].nextBusTime;
+          float walkDistNew = distanceStringToMiles(n[0].walkDistance);
+          int diffTimeMin = minutesDifferenceFromEpochMs(utcTimeNow, nextBusTimeStr.c_str());
+          String busUsed = n[0].busLabel;
+          String firstLocation = n[0].stationName;
+
+          float relativeNewWalkTime = newWalkTime(walkTime, milesComputeSaved, walkDistNew);
+
+          // int nextBusTime = minutesDifferenceFromEpochMs(utcTimeNow, n[i].nextBusTime.c_str());
+          // for (int i = 0; i < n.size(); ++i) {
+            // dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
+            // dbgSerial->print("Walk distance: "); dbgSerial->println(n[i].walkDistance);
+            // dbgSerial->print("Walk time: "); dbgSerial->println(n[i].walkTime);
+            // dbgSerial->print("Station: "); dbgSerial->println(n[i].stationName);
+            // dbgSerial->print("Next bus: "); dbgSerial->println(n[i].nextBusTime);
+            // 
+            
+
+            // dbgSerial->print("Next bus in minutes: "); dbgSerial->println(nextBusTime);
+          // }
+          logMessage("Using bus: " + busUsed + ", First location: " + firstLocation + ", In relation to our time next bus is in: " + String(diffTimeMin) + " min, " + "Next bus time: " + nextBusTimeStr + ", Original walk time: " + String(walkTime) + " min, Original miles: " + String(milesComputeSaved) + " New walk time: " + String(relativeNewWalkTime) + " min" + ", For walk distance of " + String(walkDistNew) + " miles");
+          float timeToLeaveFloat = diffTimeMin - relativeNewWalkTime;
+          int timeToLeave = roundf(timeToLeaveFloat);
+          String leaveMsg;
+          if (timeToLeave < 0) {
+            leaveMsg = "Now (Run )" + String(timeToLeave * -1) + " min faster";
+          } else if (timeToLeave == 0) {
+            leaveMsg = "Now";
+          } else {
+            leaveMsg = String(timeToLeave) + " min";
+          }
+          sendCommand("t2.txt=\"" + leaveMsg + "\"");
+          sendCommand("t4.txt=\"" + busUsed + "\"");
+          sendCommand("t7.txt=\"" + firstLocation + "\"");
+        } else {
+          logMessage("No transit options found for the given addresses.");
+          // Log unfound messages or just do something here, suggest re-choosing addresses
+        }
+
+        
+
+      }
+    }
+
 
     
     // logMessage("Current location: " + String(c.lat, 6) + ", " + String(c.lon, 6));
@@ -2232,23 +2336,7 @@ void setup() {
   //   connected = tryWifi(ssidTest, passwordTest); // TEMP for testing so we can have our server
   // }
   // logMessage("Test compute walktime of 10 min for 0.5 miles with new miles of 1.2: " + String(newWalkTime(10, 0.5, 1.2)) + " min");
-  startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
-  endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
-  std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
-
-  String utcTimeNow = getTimeNowUTC();
-
-  for (int i = 0; i < n.size(); ++i) {
-    dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
-    dbgSerial->print("Walk distance: "); dbgSerial->println(n[i].walkDistance);
-    dbgSerial->print("Walk time: "); dbgSerial->println(n[i].walkTime);
-    dbgSerial->print("Station: "); dbgSerial->println(n[i].stationName);
-    dbgSerial->print("Next bus: "); dbgSerial->println(n[i].nextBusTime);
-    // int nextBusTime = minutesDifferenceFromNow();
-    int nextBusTime = minutesDifferenceFromEpochMs(utcTimeNow, n[i].nextBusTime.c_str());
-
-    dbgSerial->print("Next bus in minutes: "); dbgSerial->println(nextBusTime);
-  }
+  
         
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
@@ -2268,6 +2356,14 @@ void loop() {
   //     int len = idx - 3;       // payload length
   //     handleNextionPacket(buf, len);
   //     idx = 0;
+  //   }
+  // }
+  // while(1) {
+  //   if (minute_changed_now()) {
+  //     logMessage("Minute changed now");
+  //     // checkForUpdates();
+  //   } else {
+  //     // break;
   //   }
   // }
   server.handleClient(); 
