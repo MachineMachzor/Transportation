@@ -28,6 +28,8 @@ const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials i
 
 // This is for the use case of if wifi just does not work randomly, but still want to develop code
 const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecting
+#define DEBUG_MINUTES false
+
 
 
 // Set all of these to false in production to not skip the code
@@ -36,6 +38,7 @@ const bool SKIP_WIFI_LOGIN = true;
 const bool SKIP_ADDR_CHOOSE = true;
 const bool SKIP_FIRST_BUS_SELECT = true;
 const bool SKIP_WALKTIME_SET = true;
+const bool SKIP_INFO_PAGE = false;
 
 // Set all of these to false in production to not reset saved settings
 const bool RESET_SAVED_ADDRS = true;
@@ -513,7 +516,6 @@ void handleNextionPacket(uint8_t *p, int len) {
   }
 }
 
-#define DEBUG_MINUTES true
 
 // Trim whitespace
 static String trimStr(const String &s) {
@@ -2087,7 +2089,7 @@ void setup() {
     std::vector<String> walkTimeList;
     std::vector<String> walkDistList;
 
-    if (walkTime == WALKTIME_NONE) {
+    if (walkTime == WALKTIME_NONE || milesComputeSaved == WALKTIME_NONE || bus.length() == 0 || startAddr.length() == 0 || endAddr.length() == 0) {
       String dist;
       String walk; //Local computed from first bus initially
       // String bus;
@@ -2161,9 +2163,9 @@ void setup() {
 
       } else {
         // Testing
-        walkTime = 10;
-        bus = "P1";
-        milesComputeSaved = 0.5;
+        // walkTime = 10;
+        bus = "64";
+        
         // safeSetPage("Walk");
       }
 
@@ -2189,18 +2191,10 @@ void setup() {
         safeSetPage("InfoPage");
       } else {
         walkTime = 10;
-        bus = "P1";
         milesComputeSaved = 0.5;
       }
     }
 
-
-    
-    
-    
-
-
-    
 
     
     // logMessage("Current location: " + String(c.lat, 6) + ", " + String(c.lon, 6));
