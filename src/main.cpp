@@ -598,6 +598,17 @@ bool minute_changed_now(void) {
   return false;
 }
 
+// int seconds_until_next_minute(void) {
+//     time_t now = time(NULL);
+//     if (now == (time_t)-1) return -1; /* errno set by time() */
+//     int sec = (int)(now % 60);
+//     int wait = 60 - sec;
+//     if (wait == 0) wait = 60;
+//     return wait;
+// }
+
+
+
 
 // Main: epochMsStr may contain hidden chars; nextBusTimeStr examples: "6:45 PM", "18:45"
 int minutesDifferenceFromEpochMs(const String &epochMsStr, const String &nextBusTimeStr) {
@@ -2093,7 +2104,7 @@ void block_infoPage() {
     bool useBestBus = (useBestBusStr == "1");
     // startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
     // endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
-    std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
+    // std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
 
     // Check if bus is in the list
     if (bus.length() > 0) {
@@ -2403,6 +2414,9 @@ void loop() {
   //   }
   // }
   server.handleClient(); 
+
+
+  // dbgSerial->println(seconds_until_next_minute());
 
 
 }
