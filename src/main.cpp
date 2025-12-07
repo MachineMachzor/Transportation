@@ -1887,6 +1887,297 @@ const char* iana_to_posix(const char* iana) {
 }
 
 
+String startAddr = "";
+String endAddr = "";
+
+
+void block_chooseAddress() {
+  safeSetPage("StartAddr");
+  startAddr = chooseAddress();
+  saveSetting(CONST_KEYS.startAddr.c_str(), startAddr.c_str());
+  
+  safeSetPage("EndAddr");
+  endAddr = chooseAddress();
+  saveSetting(CONST_KEYS.endAddr.c_str(), endAddr.c_str());
+}
+
+
+void block_chooseWifi() {
+  int compId = -1;
+  if (!SKIP_WIFI_SELECTION) {
+    buttonText bt = SelectWifi();
+    String text = bt.text;
+    compId = bt.compId;
+    
+    // After selecting wifi, go to the next page
+    safeSetPage("WifiInput");
+    
+    if (text != "Unlisted") {
+      // ssidTest = (char*)text.c_str();
+      sendCommand("t2.txt=\"" + text + "\""); // set SSID field
+    }
+
+  }
+}
+
+WifiCredentials block_wifiLogin() {
+  int compId = -1;
+  String username;
+  String password;
+  WifiCredentials creds = WifiCredentials();
+  buttonText wl;
+
+  if (!SKIP_WIFI_LOGIN) {
+    while (!creds.ok) {
+      wl = WifiLogin();
+      creds.ok = wl.connected;
+    }
+
+    username = wl.ssid;
+    password = wl.pass;
+    creds.ok = wl.connected;
+
+    
+  } 
+  return creds;
+}
+
+float walkTime = WALKTIME_NONE;
+float milesComputeSaved = WALKTIME_NONE;
+String bus = "";
+String firstBusOnlySaved = "false";
+int reloadAttempt = 0;
+
+void block_walkTimeBus() {
+  std::vector<String> transitList;
+  std::vector<String> walkTimeList;
+  std::vector<String> walkDistList;
+
+  if (walkTime == WALKTIME_NONE || milesComputeSaved == WALKTIME_NONE || bus.length() == 0 || startAddr.length() == 0 || endAddr.length() == 0) {
+    String dist;
+    String walk; //Local computed from first bus initially
+    // String bus;
+    if(!SKIP_FIRST_BUS_SELECT) {
+      // From page FirstTransit, they need to select the bus so I get the distance and walktime, so I can set it relatively from there.
+      // Get miles/dist, save it, then go to walk page so use knows what they're specifying
+      // Both this and the SKIP_WALKTIME_SET really both have to be ran
+      safeSetPage("FirstTransit");
+
+      // locals.startAddr = 
+      // locals.endAddr = 
+      std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
+
+      
+      for (int i = 0; i < n.size(); ++i) {
+        transitList.push_back(n[i].busLabel);
+        // dbgSerial->println("---");
+        dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
+        walkTimeList.push_back(n[i].walkTime);
+        walkDistList.push_back(n[i].walkDistance);
+        // dbgSerial->print("Walk distance: "); dbgSerial->println(infos[i].walkDistance);
+        // dbgSerial->print("Walk time: "); dbgSerial->println(infos[i].walkTime);
+        // dbgSerial->print("Station: "); dbgSerial->println(infos[i].stationName);
+        // dbgSerial->print("Next bus: "); dbgSerial->println(infos[i].nextBusTime);
+      }
+      int remaining = MAX_TRANSIT_RESULTS - int(n.size());
+      // logMessage("Any remaining blanks " + String((MAX_TRANSIT_RESULTS - int(n.size()))));
+      for (int i = 0; i < remaining; i++) {
+        transitList.push_back(""); // pad out to max
+      }
+
+      sendComponentTxt(MAX_TRANSIT_RESULTS, 10, transitList, "b", false, 0);
+
+      while(true) {
+        int compId = waitForButtonPress(*nextionSerial, 10000);
+        if (TRANSIT_BUSES.count(compId)) {
+          logMessage("Button pressed, compId: " + String(compId));
+          // sendCommand("get b" + String(compId) + ".txt"); // get text of button pressed
+          sendCommand("get " + TRANSIT_BUSES[compId] + ".txt");
+          String busIdx = getButtonText(*nextionSerial); // flush any prior response
+            if (busIdx.length() > 0 && busIdx != "Loading...") {
+              String forLog = appendChosen + busIdx;
+              // Get index of text in transitList
+              int idx = indexOf(transitList, busIdx);
+              dist = walkDistList[idx];
+              walk = walkTimeList[idx];
+              bus = busIdx;
+              // logMessage(forLog);
+              sendCommand("t2.txt=\"" + forLog + "\"");
+              
+              logMessage("Selected bus with walk distance: " + dist + ", walk time: " + walk + ", bus: " + bus);
+              // break;
+            }
+        }
+        if (compId == 5) {
+          //Continue button 
+          if (dist.length() > 0 && walk.length() > 0) {
+            walkTime = minutesStringToFloat(walk);//.toInt();
+            milesComputeSaved = distanceStringToMiles(dist);
+            String forLog = "Using Walk Distance: " + String(milesComputeSaved) + ", Walk Time: " + String(walkTime) + ", Bus: " + bus;
+            logMessage(forLog);
+            // sendCommand("t1.txt=\"" + forLog + "\""); // show what we're using
+            
+            sendCommand("t3.txt=\"\"");
+            break;
+          } else {
+            sendCommand("t3.txt=\"Error, select transit option\"");
+          }
+        }
+      }
+
+    } else {
+      // Testing
+      // walkTime = 10;
+      bus = "64";
+      
+      // safeSetPage("Walk");
+    }
+
+    if (!SKIP_WALKTIME_SET) {
+      safeSetPage("Walk");
+
+      float walkTimeFound = chooseWalkTime();
+
+      logMessage("User specified walk time: " + String(walkTimeFound) + " min " + "(was " + String(walkTime) + " min)");
+      String equalityCheck = (walkTimeFound == walkTime) ? "true" : "false";
+      // logMessage("User specified walk time equals prior walk time? " + equalityCheck);
+
+      if (int(walkTimeFound) == int(WALKTIME_NONE)) {
+        // walkTimeFound = WALKTIME_DEFAULT; //We specified none prior
+        walkTimeFound = walkTime; //Use prior loaded walktime
+      }
+      
+
+      logMessage("Final Walk Time chosen: " + String(walkTimeFound) + " min");
+      saveSetting(CONST_KEYS.walkTime.c_str(), String(walkTimeFound).c_str());
+      saveSetting(CONST_KEYS.milesCompute.c_str(), String(milesComputeSaved).c_str());
+      saveSetting(CONST_KEYS.bus.c_str(), bus.c_str());
+      safeSetPage("InfoPage");
+    } else {
+      walkTime = 10;
+      milesComputeSaved = 0.5;
+    }
+  }
+}
+
+
+void block_infoPage() {
+  safeSetPage("InfoPage");
+
+  if (minute_changed_now()) {
+    std::vector<String> transitList;
+    std::vector<String> walkTimeList;
+    std::vector<String> walkDistList;
+
+    std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
+
+    
+    for (int i = 0; i < n.size(); ++i) {
+      transitList.push_back(n[i].busLabel);
+      // dbgSerial->println("---");
+      dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
+      walkTimeList.push_back(n[i].walkTime);
+      walkDistList.push_back(n[i].walkDistance);
+      // dbgSerial->print("Walk distance: "); dbgSerial->println(infos[i].walkDistance);
+      // dbgSerial->print("Walk time: "); dbgSerial->println(infos[i].walkTime);
+      // dbgSerial->print("Station: "); dbgSerial->println(infos[i].stationName);
+      // dbgSerial->print("Next bus: "); dbgSerial->println(infos[i].nextBusTime);
+    }
+    int remaining = MAX_TRANSIT_RESULTS - int(n.size());
+    // logMessage("Any remaining blanks " + String((MAX_TRANSIT_RESULTS - int(n.size()))));
+    for (int i = 0; i < remaining; i++) {
+      transitList.push_back(""); // pad out to max
+    }
+    sendCommand("get c0.val");
+    String useBestBusStr = getButtonText(*nextionSerial); // flush any prior response
+    bool useBestBus = (useBestBusStr == "1");
+    // startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
+    // endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
+    std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
+
+    // Check if bus is in the list
+    if (bus.length() > 0) {
+      logMessage("Checking for saved bus: " + bus);
+      int busIdx = indexOf(transitList, bus);
+      if (busIdx >= 0) {
+        logMessage("Saved bus found in transit list: " + bus + ", index: " + String(busIdx));
+        // Filter n to only have this bus
+        std::vector<BoardingInfo> nFiltered;
+        nFiltered.push_back(n[busIdx]);
+        n = nFiltered;
+      } else {
+        logMessage("Saved bus not found in transit list: " + bus + ", using first available bus");
+        // If not found, and useBestBus is false, just use first bus
+        if (!useBestBus && n.size() > 1) {
+          std::vector<BoardingInfo> nFiltered;
+          nFiltered.push_back(n[0]);
+          n = nFiltered;
+        }
+      }
+    } else {
+      logMessage("No saved bus specified, using first available bus");
+      // If no bus specified, and useBestBus is false, just use first bus
+      if (!useBestBus && n.size() > 1) {
+        std::vector<BoardingInfo> nFiltered;
+        nFiltered.push_back(n[0]);
+        n = nFiltered;
+      }
+    }
+
+    if (n.size() > 0) {
+      String utcTimeNow = getTimeNowUTC();
+      String nextBusTimeStr = n[0].nextBusTime;
+      float walkDistNew = distanceStringToMiles(n[0].walkDistance);
+      int diffTimeMin = minutesDifferenceFromEpochMs(utcTimeNow, nextBusTimeStr.c_str());
+      String busUsed = n[0].busLabel;
+      String firstLocation = n[0].stationName;
+
+      float relativeNewWalkTime = newWalkTime(walkTime, milesComputeSaved, walkDistNew);
+
+      // int nextBusTime = minutesDifferenceFromEpochMs(utcTimeNow, n[i].nextBusTime.c_str());
+      // for (int i = 0; i < n.size(); ++i) {
+        // dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
+        // dbgSerial->print("Walk distance: "); dbgSerial->println(n[i].walkDistance);
+        // dbgSerial->print("Walk time: "); dbgSerial->println(n[i].walkTime);
+        // dbgSerial->print("Station: "); dbgSerial->println(n[i].stationName);
+        // dbgSerial->print("Next bus: "); dbgSerial->println(n[i].nextBusTime);
+        // 
+        
+
+        // dbgSerial->print("Next bus in minutes: "); dbgSerial->println(nextBusTime);
+      // }
+      logMessage("Using bus: " + busUsed + ", First location: " + firstLocation + ", In relation to our time next bus is in: " + String(diffTimeMin) + " min, " + "Next bus time: " + nextBusTimeStr + ", Original walk time: " + String(walkTime) + " min, Original miles: " + String(milesComputeSaved) + " New walk time: " + String(relativeNewWalkTime) + " min" + ", For walk distance of " + String(walkDistNew) + " miles");
+      float timeToLeaveFloat = diffTimeMin - relativeNewWalkTime;
+      int timeToLeave = roundf(timeToLeaveFloat);
+      String leaveMsg;
+      if (timeToLeave < 0) {
+        leaveMsg = "Now (Run )" + String(timeToLeave * -1) + " min faster";
+      } else if (timeToLeave == 0) {
+        leaveMsg = "Now";
+      } else {
+        leaveMsg = String(timeToLeave) + " min";
+      }
+      sendCommand("t2.txt=\"" + leaveMsg + "\"");
+      sendCommand("t4.txt=\"" + busUsed + "\"");
+      sendCommand("t7.txt=\"" + firstLocation + "\"");
+    } else {
+      logMessage("No transit options found for the given addresses.");
+      String makeReloadStr = (reloadAttempt < 10) ? " (Reload Attempt " + String(reloadAttempt) + ")" : "(More than 10 reloads)";
+      // Log unfound messages or just do something here, suggest re-choosing addresses
+      sendCommand("t2.txt=\"N/A " + makeReloadStr + "\"");
+      sendCommand("t4.txt=\"N/A\"");
+      sendCommand("t7.txt=\"N/A\"");
+      if (reloadAttempt < 10) {
+        reloadAttempt += 1;
+      }
+      
+    }
+
+    
+
+  }
+}
+
 
 
 
@@ -1899,17 +2190,6 @@ void setup() {
 
   
   // WiFi.begin(ssid, password);
-
-
-
-  String startAddr = "";
-  String endAddr = "";
-  float walkTime = WALKTIME_NONE;
-  float milesComputeSaved = WALKTIME_NONE;
-  String bus = "";
-  String firstBusOnlySaved = "false";
-
-  
 
 
   // example: RX=16, TX=17
@@ -1978,7 +2258,6 @@ void setup() {
   logMessage("Loaded walkTime : " + String(walkTime) + ", milesComputeSaved: " + String(milesComputeSaved) + ", bus: " + bus + ", firstBusOnlySaved: " + firstBusOnlySaved);
   logMessage("Walktime equals WALKTIME_NONE? " + String(walkTime == WALKTIME_NONE ? "true" : "false"));
   logMessage("Loaded Start Addr: " + startAddr + ", End Addr: " + endAddr);
-
   
   // Wifi may not have a password
   
@@ -1997,66 +2276,12 @@ void setup() {
     }
     
   }
-  
-
-
-
-  // Serial.println(creds);
-  
-  // WiFi.begin();
-  // WiFi.reconnect(); //Try to store credentials?
-  
-  
-  // Send command to Nextion to show wifi networks
-
-  // if (TESTING_NEXTION) {
-  //   connected = false;
-  // }
 
   if (!connected) {
-    int compId = -1;
-    if (!SKIP_WIFI_SELECTION) {
-      buttonText bt = SelectWifi();
-      String text = bt.text;
-      compId = bt.compId;
-      
-      // After selecting wifi, go to the next page
-      safeSetPage("WifiInput");
-      
-      if (text != "Unlisted") {
-        // ssidTest = (char*)text.c_str();
-        sendCommand("t2.txt=\"" + text + "\""); // set SSID field
-      }
-
-    }
-    
-
-
-    compId = -1;
-    String username;
-    String password;
-    creds = WifiCredentials();
-    buttonText wl;
-
-    if (!SKIP_WIFI_LOGIN) {
-      while (!creds.ok) {
-        wl = WifiLogin();
-        creds.ok = wl.connected;
-      }
-
-      username = wl.ssid;
-      password = wl.pass;
-      creds.ok = wl.connected;
-
-      
-    } 
-    
-    
+    block_chooseWifi();
+    creds = block_wifiLogin();
   }
   
-  // Realistically we'll want to wait for a command to select to wifi then try again
-  // connected = WiFi.status() == WL_CONNECTED;
-  // Would have to do further checks here than this, as they may have prior stored addresses
   if (creds.ok || OVERRIDE_WIFI) {
     String msgLog = OVERRIDE_WIFI ? "OVERRIDE_WIFI set, starting setup sequence" : "WiFi connected successfully, starting setup sequence";
     logMessage(msgLog);
@@ -2088,14 +2313,8 @@ void setup() {
       
       
       if (!SKIP_ADDR_CHOOSE) {
+        block_chooseAddress();
         
-        safeSetPage("StartAddr");
-        startAddr = chooseAddress();
-        saveSetting(CONST_KEYS.startAddr.c_str(), startAddr.c_str());
-        
-        safeSetPage("EndAddr");
-        endAddr = chooseAddress();
-        saveSetting(CONST_KEYS.endAddr.c_str(), endAddr.c_str());
 
 
       } else {
@@ -2103,200 +2322,17 @@ void setup() {
         startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
         endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
       }
+      
     }
-    std::vector<String> transitList;
-    std::vector<String> walkTimeList;
-    std::vector<String> walkDistList;
 
-    if (walkTime == WALKTIME_NONE || milesComputeSaved == WALKTIME_NONE || bus.length() == 0 || startAddr.length() == 0 || endAddr.length() == 0) {
-      String dist;
-      String walk; //Local computed from first bus initially
-      // String bus;
-      if(!SKIP_FIRST_BUS_SELECT) {
-        // From page FirstTransit, they need to select the bus so I get the distance and walktime, so I can set it relatively from there.
-        // Get miles/dist, save it, then go to walk page so use knows what they're specifying
-        // Both this and the SKIP_WALKTIME_SET really both have to be ran
-        safeSetPage("FirstTransit");
-
-        // locals.startAddr = 
-        // locals.endAddr = 
-        std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
-
-        
-        for (int i = 0; i < n.size(); ++i) {
-          transitList.push_back(n[i].busLabel);
-          // dbgSerial->println("---");
-          dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
-          walkTimeList.push_back(n[i].walkTime);
-          walkDistList.push_back(n[i].walkDistance);
-          // dbgSerial->print("Walk distance: "); dbgSerial->println(infos[i].walkDistance);
-          // dbgSerial->print("Walk time: "); dbgSerial->println(infos[i].walkTime);
-          // dbgSerial->print("Station: "); dbgSerial->println(infos[i].stationName);
-          // dbgSerial->print("Next bus: "); dbgSerial->println(infos[i].nextBusTime);
-        }
-        int remaining = MAX_TRANSIT_RESULTS - int(n.size());
-        // logMessage("Any remaining blanks " + String((MAX_TRANSIT_RESULTS - int(n.size()))));
-        for (int i = 0; i < remaining; i++) {
-          transitList.push_back(""); // pad out to max
-        }
-
-        sendComponentTxt(MAX_TRANSIT_RESULTS, 10, transitList, "b", false, 0);
-
-        while(true) {
-          int compId = waitForButtonPress(*nextionSerial, 10000);
-          if (TRANSIT_BUSES.count(compId)) {
-            logMessage("Button pressed, compId: " + String(compId));
-            // sendCommand("get b" + String(compId) + ".txt"); // get text of button pressed
-            sendCommand("get " + TRANSIT_BUSES[compId] + ".txt");
-            String busIdx = getButtonText(*nextionSerial); // flush any prior response
-              if (busIdx.length() > 0 && busIdx != "Loading...") {
-                String forLog = appendChosen + busIdx;
-                // Get index of text in transitList
-                int idx = indexOf(transitList, busIdx);
-                dist = walkDistList[idx];
-                walk = walkTimeList[idx];
-                bus = busIdx;
-                // logMessage(forLog);
-                sendCommand("t2.txt=\"" + forLog + "\"");
-                
-                logMessage("Selected bus with walk distance: " + dist + ", walk time: " + walk + ", bus: " + bus);
-                // break;
-              }
-          }
-          if (compId == 5) {
-            //Continue button 
-            if (dist.length() > 0 && walk.length() > 0) {
-              walkTime = minutesStringToFloat(walk);//.toInt();
-              milesComputeSaved = distanceStringToMiles(dist);
-              String forLog = "Using Walk Distance: " + String(milesComputeSaved) + ", Walk Time: " + String(walkTime) + ", Bus: " + bus;
-              logMessage(forLog);
-              // sendCommand("t1.txt=\"" + forLog + "\""); // show what we're using
-              
-              sendCommand("t3.txt=\"\"");
-              break;
-            } else {
-              sendCommand("t3.txt=\"Error, select transit option\"");
-            }
-          }
-        }
-
-      } else {
-        // Testing
-        // walkTime = 10;
-        bus = "64";
-        
-        // safeSetPage("Walk");
-      }
-
-      if (!SKIP_WALKTIME_SET) {
-        safeSetPage("Walk");
-
-        float walkTimeFound = chooseWalkTime();
-
-        logMessage("User specified walk time: " + String(walkTimeFound) + " min " + "(was " + String(walkTime) + " min)");
-        String equalityCheck = (walkTimeFound == walkTime) ? "true" : "false";
-        // logMessage("User specified walk time equals prior walk time? " + equalityCheck);
-
-        if (int(walkTimeFound) == int(WALKTIME_NONE)) {
-          // walkTimeFound = WALKTIME_DEFAULT; //We specified none prior
-          walkTimeFound = walkTime; //Use prior loaded walktime
-        }
-        
-
-        logMessage("Final Walk Time chosen: " + String(walkTimeFound) + " min");
-        saveSetting(CONST_KEYS.walkTime.c_str(), String(walkTimeFound).c_str());
-        saveSetting(CONST_KEYS.milesCompute.c_str(), String(milesComputeSaved).c_str());
-        saveSetting(CONST_KEYS.bus.c_str(), bus.c_str());
-        safeSetPage("InfoPage");
-      } else {
-        walkTime = 10;
-        milesComputeSaved = 0.5;
-      }
-    }
+    block_walkTimeBus();
+    
 
     if (!SKIP_INFO_PAGE) {
-      safeSetPage("InfoPage");
-      if (minute_changed_now()) {
-        sendCommand("get c0.val");
-        String useBestBusStr = getButtonText(*nextionSerial); // flush any prior response
-        bool useBestBus = (useBestBusStr == "1");
-        // startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
-        // endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
-        std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
-
-        // Check if bus is in the list
-        if (bus.length() > 0) {
-          logMessage("Checking for saved bus: " + bus);
-          int busIdx = indexOf(transitList, bus);
-          if (busIdx >= 0) {
-            logMessage("Saved bus found in transit list: " + bus + ", index: " + String(busIdx));
-            // Filter n to only have this bus
-            std::vector<BoardingInfo> nFiltered;
-            nFiltered.push_back(n[busIdx]);
-            n = nFiltered;
-          } else {
-            logMessage("Saved bus not found in transit list: " + bus + ", using first available bus");
-            // If not found, and useBestBus is false, just use first bus
-            if (!useBestBus && n.size() > 1) {
-              std::vector<BoardingInfo> nFiltered;
-              nFiltered.push_back(n[0]);
-              n = nFiltered;
-            }
-          }
-        } else {
-          logMessage("No saved bus specified, using first available bus");
-          // If no bus specified, and useBestBus is false, just use first bus
-          if (!useBestBus && n.size() > 1) {
-            std::vector<BoardingInfo> nFiltered;
-            nFiltered.push_back(n[0]);
-            n = nFiltered;
-          }
-        }
-
-        if (n.size() > 0) {
-          String utcTimeNow = getTimeNowUTC();
-          String nextBusTimeStr = n[0].nextBusTime;
-          float walkDistNew = distanceStringToMiles(n[0].walkDistance);
-          int diffTimeMin = minutesDifferenceFromEpochMs(utcTimeNow, nextBusTimeStr.c_str());
-          String busUsed = n[0].busLabel;
-          String firstLocation = n[0].stationName;
-
-          float relativeNewWalkTime = newWalkTime(walkTime, milesComputeSaved, walkDistNew);
-
-          // int nextBusTime = minutesDifferenceFromEpochMs(utcTimeNow, n[i].nextBusTime.c_str());
-          // for (int i = 0; i < n.size(); ++i) {
-            // dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
-            // dbgSerial->print("Walk distance: "); dbgSerial->println(n[i].walkDistance);
-            // dbgSerial->print("Walk time: "); dbgSerial->println(n[i].walkTime);
-            // dbgSerial->print("Station: "); dbgSerial->println(n[i].stationName);
-            // dbgSerial->print("Next bus: "); dbgSerial->println(n[i].nextBusTime);
-            // 
-            
-
-            // dbgSerial->print("Next bus in minutes: "); dbgSerial->println(nextBusTime);
-          // }
-          logMessage("Using bus: " + busUsed + ", First location: " + firstLocation + ", In relation to our time next bus is in: " + String(diffTimeMin) + " min, " + "Next bus time: " + nextBusTimeStr + ", Original walk time: " + String(walkTime) + " min, Original miles: " + String(milesComputeSaved) + " New walk time: " + String(relativeNewWalkTime) + " min" + ", For walk distance of " + String(walkDistNew) + " miles");
-          float timeToLeaveFloat = diffTimeMin - relativeNewWalkTime;
-          int timeToLeave = roundf(timeToLeaveFloat);
-          String leaveMsg;
-          if (timeToLeave < 0) {
-            leaveMsg = "Now (Run )" + String(timeToLeave * -1) + " min faster";
-          } else if (timeToLeave == 0) {
-            leaveMsg = "Now";
-          } else {
-            leaveMsg = String(timeToLeave) + " min";
-          }
-          sendCommand("t2.txt=\"" + leaveMsg + "\"");
-          sendCommand("t4.txt=\"" + busUsed + "\"");
-          sendCommand("t7.txt=\"" + firstLocation + "\"");
-        } else {
-          logMessage("No transit options found for the given addresses.");
-          // Log unfound messages or just do something here, suggest re-choosing addresses
-        }
-
+      block_infoPage();
         
 
-      }
+      
     }
 
 
