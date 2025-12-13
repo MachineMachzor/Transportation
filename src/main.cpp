@@ -23,8 +23,9 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = true;//If false, should be production nextion
-const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one
+const bool TESTING_NEXTION = false;//If false, should be production nextion
+const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one, false for production
+const bool RESET_SAVED_WIFI = true; //Set to true to reset saved wifi credentials, this should be false in production
 
 // This is for the use case of if wifi just does not work randomly, but still want to develop code
 const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecting
@@ -38,7 +39,7 @@ const bool SKIP_WIFI_LOGIN = true;
 const bool SKIP_ADDR_CHOOSE = true;
 const bool SKIP_FIRST_BUS_SELECT = true;
 const bool SKIP_WALKTIME_SET = true;
-const bool SKIP_INFO_PAGE = false;
+const bool SKIP_INFO_PAGE = true;
 
 // Set all of these to false in production to not reset saved settings
 const bool RESET_SAVED_ADDRS = true;
@@ -290,6 +291,49 @@ String httpGetStream(const String &url) {
   delete client;
   return result;
 }
+
+
+
+String httpGetDirections(const String &url) {
+  WiFiClientSecure *client = new WiFiClientSecure();
+  client->setInsecure(); // for testing only
+  HTTPClient https;
+  https.begin(*client, url);
+
+  // Add headers similar to the browser request
+  https.addHeader("User-Agent", "ESP32/1.0");
+  https.addHeader("Accept", "*/*");
+  https.addHeader("Accept-Language", "en-US,en;q=0.9");
+  https.addHeader("Accept-Encoding", "identity"); // avoid gzip on device
+  https.addHeader("Referer", "https://wego.here.com/");
+  https.addHeader("Origin", "https://wego.here.com");
+  https.addHeader("Cache-Control", "no-cache");
+
+  int httpCode = https.GET();
+  String result = "";
+
+  if (httpCode > 0 && httpCode == HTTP_CODE_OK) {
+    WiFiClient *stream = https.getStreamPtr();
+    const size_t bufSize = 512;
+    uint8_t buf[bufSize];
+    // read until connection closed
+    while (https.connected() || stream->available()) {
+      if (stream->available()) {
+        size_t len = stream->readBytes(buf, bufSize);
+        result += String((char*)buf, len);
+      } else {
+        delay(1);
+      }
+    }
+  } else {
+    dbgSerial->printf("HTTP GET failed, code: %d, err: %s\n", httpCode, https.errorToString(httpCode).c_str());
+  }
+
+  https.end();
+  delete client;
+  return result;
+}
+
 
 struct currentLocation {
   double lat;
@@ -1636,9 +1680,24 @@ std::vector<BoardingInfo> getDirections(String start, String end, double newLat,
   start.replace(",", "%2C");
   end.replace(" ", "+");
   end.replace(",", "%2C");
-  String url = "https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s" + start + "!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s" + end + "!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184";
-  url = setPbCenter(url, newLat, newLong); // set to user's location
-  // dbgSerial->println("DirectionsURL: " + url);
+  // PROD URL:
+  // String url = "https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s" + start + "!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s" + end + "!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184";
+  // url = setPbCenter(url, newLat, newLong); // set to user's location
+  
+  float startLat_ = 40.4546065; 
+  float startLon_ = -79.92213079999999;
+  float endLat_ = 40.473932;
+  float endLon_ = -79.918057;
+
+
+  // TESTING
+  // String url = "https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s" + start + "!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s" + end + "!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184";
+  String url = "https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s" + start + "!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d" + String(startLat_) + "!4d" + String(startLon_) + "!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s" + end + "!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d" + String(endLat_) + "!4d" + String(endLon_) + "!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184";
+
+  if (verbose) {
+    dbgSerial->println("DirectionsURL: " + url);
+  }
+  // 
   // return 0;
   String body = httpGetStream(url);
   logMessage("Directions response length: " + String(body.length()));
@@ -1976,6 +2035,7 @@ void block_walkTimeBus() {
 
       // locals.startAddr = 
       // locals.endAddr = 
+      logMessage("Before getting directions, startAddr: " + startAddr + ", endAddr: " + endAddr);
       std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
 
       
@@ -2076,6 +2136,7 @@ void block_infoPage() {
   safeSetPage("InfoPage");
 
   if (minute_changed_now()) {
+    sendCommand("b0.txt=\"Loading\"");
     std::vector<String> transitList;
     std::vector<String> walkTimeList;
     std::vector<String> walkDistList;
@@ -2184,8 +2245,27 @@ void block_infoPage() {
       
     }
 
-    
+    sendCommand("b0.txt=\"Settings...\"");
 
+    int settingsId = -1;
+    String text = "";
+    while (settingsId != 11) {
+      // logMessage("Waiting for button press during wifi selection...");
+      settingsId = waitForButtonPress(*nextionSerial, 10000);
+      // logMessage("Button pressed, compId: " + String(compId));
+      // sendCommand("get b" + String(compId) + ".txt"); // get text of button pressed
+      // sendCommand("get " + NO_WIFI_PAGE_MAP[compId] + ".txt");
+      // text = getButtonText(*nextionSerial); // flush any prior response
+    }
+    if (settingsId == 11) {
+      logMessage("Settings button pressed");
+      safeSetPage("UsefulInfo");
+      sendCommand("t1.txt=\"Walk Time: " + String(walkTime) + " min\nMiles to First Location: " + String(milesComputeSaved) + " mi\nPreferred Bus: " + bus + "\"");
+      sendCommand("t5.txt=\"Start Location: " + startAddr + "\nEnd Location: " + endAddr + "\"");
+      // block_chooseAddress();
+      // block_walkTimeBus();
+      // safeSetPage("InfoPage");
+    }
   }
 }
 
@@ -2242,6 +2322,11 @@ void setup() {
   if (FAKE_WIFI) { // This is for testing really
     saveSetting(CONST_KEYS.ssid.c_str(), ssidTest);
     saveSetting(CONST_KEYS.pass.c_str(), passwordTest); 
+  } else {
+    if (RESET_SAVED_WIFI) {
+      saveSetting(CONST_KEYS.ssid.c_str(), "");
+      saveSetting(CONST_KEYS.pass.c_str(), ""); 
+    }
   }
 
   if (RESET_SAVED_ADDRS){
@@ -2325,9 +2410,6 @@ void setup() {
       
       if (!SKIP_ADDR_CHOOSE) {
         block_chooseAddress();
-        
-
-
       } else {
         // logMessage("SKIP_ADDR_CHOOSE set, using prior addresses");
         startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
@@ -2335,15 +2417,9 @@ void setup() {
       }
       
     }
-
     block_walkTimeBus();
-    
-
     if (!SKIP_INFO_PAGE) {
       block_infoPage();
-        
-
-      
     }
 
 
@@ -2384,6 +2460,14 @@ void setup() {
   // }
   // logMessage("Test compute walktime of 10 min for 0.5 miles with new miles of 1.2: " + String(newWalkTime(10, 0.5, 1.2)) + " min");
   
+
+  // std::vector<BoardingInfo> n = getDirections("434 Fifth Avenue, Pittsburgh, PA", "Highland Park, Pittsburgh, PA 15206", c.lat, c.lon, true);
+  // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQWphb0V0Zi1tNUdjTWY0RzN0R1ZRNEMlM0FDZ2dJQkNEa3pxSEpBeEFCR2dNME16UTtsYXQ9NDAuNDM5Njk7bG9uPS03OS45OTgwNztuPTQzNCUyMDV0aCUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjE5LTE3MDQlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9/s-Yz01NTAtNTUyMC0wMDAwO2lkPWhlcmUlM0FwZHMlM0FwbGFjZSUzQTg0MGRwcG41LWIzZWU0MGUyODVjZjExMGZiODU5NDMwZWYzZmQ4ZjdkO2xhdD00MC40NTA4Nztsb249LTc5Ljg5NTY2O249QXNjZW5kJTIwUG9pbnQlMjBCcmVlemU7cGg9?map=40.45008,-79.94687,13.01
+  // Found cool method to reverse-engineer
+  String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU&destination=40.45087%2C-79.89566&lang=en-US&origin=40.43969%2C-79.99807&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
+  String body = httpGetDirections(url);
+  Serial.println(body);
+
         
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
@@ -2512,6 +2596,8 @@ This is the normal URL to analyze in comparison to find the nested patterns:
 https://www.google.com/maps/dir/434+Shady+Avenue,+Pittsburgh,+PA/400+East+Waterfront+Drive,+Homestead,+PA+15120/@40.4318528,-79.9255915,12z/data=!4m14!4m13!1m5!1m1!1s0x8834f20bad463bcb:0x4104e286b57ee3d5!2m2!1d-79.9221308!2d40.4546065!1m5!1m1!1s0x8834ee236ec7350f:0x73fa84093902b486!2m2!1d-79.9099369!2d40.4120663!3e3?entry=ttu&g_ep=EgoyMDI1MTEyMy4xIKXMDSoASAFQAw%3D%3D
 
 
+
+"$(ruby -e 'print Gem.bindir')/google_maps_pb_decoder" '!1m7!1s434+Fifth+Avenue%2C+Pittsburgh%2C+PA!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1sTwo+PNC+Plaza%2C+Liberty+Avenue%2C+Pittsburgh%2C+PA!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184'
 
 */
 
