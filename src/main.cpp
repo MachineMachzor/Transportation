@@ -23,7 +23,7 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = true;//If false, should be production nextion
+const bool TESTING_NEXTION = false;//If false, should be production nextion
 const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one, false for production
 const bool RESET_SAVED_WIFI = true; //Set to true to reset saved wifi credentials, this should be false in production
 
@@ -36,7 +36,7 @@ const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecti
 // Set all of these to false in production to not skip the code
 const bool SKIP_WIFI_SELECTION = true;
 const bool SKIP_WIFI_LOGIN = true;
-const bool SKIP_ADDR_CHOOSE = false;
+const bool SKIP_ADDR_CHOOSE = true;
 const bool SKIP_FIRST_BUS_SELECT = true;
 const bool SKIP_WALKTIME_SET = true;
 const bool SKIP_INFO_PAGE = true;
@@ -92,15 +92,6 @@ struct buttonText {
   String ssid = "";
   String pass = "";
   bool connected = false;
-};
-
-struct BoardingInfo {
-  String busLabel;
-  String walkDistance;
-  String walkTime;
-  String stationName;
-  String nextBusTime;
-  // int nextBusInMinutes; //Dist from utcNow() to the nextBusTime
 };
 
 
@@ -305,12 +296,189 @@ String httpGetStream(const String &url) {
   return result;
 }
 
+// Minimal data holder for the values you want to print
+struct BoardingInfo {
+  String busLabel;     // e.g., "82"
+  String walkDistance; // e.g., "0.5 mi" or numeric string
+  String walkTime;     // e.g., "9 min" or numeric string
+  String stationName;  // e.g., "Penn Ave + Shady Ave FS (Giant Eagle)"
+  String nextBusTime;  // e.g., "13:35"
+  bool valid = false;
+};
+
+// Helper: extract HH:MM from an ISO timestamp like "2025-12-13T13:33:00-05:00"
+static String isoToHHMM(const String &iso) {
+  if (iso.length() < 16) return iso;
+  return iso.substring(11, 16);
+}
+
+// Heuristic: convert length to miles string (assume >1000 = meters, else feet)
+static String lengthToMilesString(double len) {
+  if (len <= 0) return "";
+  double miles;
+  if (len > 1000.0) { // assume meters
+    miles = len / 1609.344;
+  } else { // assume feet
+    miles = len / 5280.0;
+  }
+  return String(miles, 2) + " mi";
+}
+
+String extractJsonPart(const String &raw) {
+  int startObj = raw.indexOf('{');
+  int startArr = raw.indexOf('[');
+  int start = -1;
+  if (startObj >= 0 && (startObj < startArr || startArr == -1)) start = startObj;
+  else start = startArr;
+  if (start == -1) return String();
+
+  int endObj = raw.lastIndexOf('}');
+  int endArr = raw.lastIndexOf(']');
+  int end = max(endObj, endArr);
+  if (end == -1 || end < start) return String();
+  return raw.substring(start, end + 1);
+}
 
 
-String httpGetDirections(const String &url) {
+// Parse all routes and extract the first boarding info per route
+// Returns number of BoardingInfo items pushed into outInfos
+size_t parseAllFirstBoardingInfos(const String &jsonPart, std::vector<BoardingInfo> &outInfos, size_t capacity = 200000) {
+  outInfos.clear();
+  if (jsonPart.length() == 0) return 0;
+
+  DynamicJsonDocument doc(capacity);
+  DeserializationError err = deserializeJson(doc, extractJsonPart(jsonPart));
+  if (err) {
+    Serial.print("JSON parse failed: ");
+    Serial.println(err.c_str());
+    return 0;
+  }
+
+  JsonVariant root = doc.as<JsonVariant>();
+  if (!root.is<JsonObject>()) return 0;
+  JsonObject rootObj = root.as<JsonObject>();
+
+  if (!rootObj.containsKey("routes")) return 0;
+  JsonVariant routesVar = rootObj["routes"];
+  if (!routesVar.is<JsonArray>()) return 0;
+  JsonArray routes = routesVar.as<JsonArray>();
+
+  for (JsonVariant rVar : routes) {
+    if (!rVar.is<JsonObject>()) continue;
+    JsonObject route = rVar.as<JsonObject>();
+
+    if (!route.containsKey("sections")) continue;
+    JsonVariant sectionsVar = route["sections"];
+    if (!sectionsVar.is<JsonArray>()) continue;
+    JsonArray sections = sectionsVar.as<JsonArray>();
+
+    // Track the most recent pedestrian section seen before a transit section
+    JsonObject prevPedSection; // empty if none
+    bool found = false;
+    for (JsonVariant sVar : sections) {
+      if (!sVar.is<JsonObject>()) continue;
+      JsonObject section = sVar.as<JsonObject>();
+      const char *type = section["type"] | "";
+
+      if (strcmp(type, "pedestrian") == 0) {
+        prevPedSection = section;
+        continue;
+      }
+
+      if (strcmp(type, "transit") == 0) {
+        BoardingInfo bi;
+        // bus label: prefer shortName, then shortName in transport, then name, then longName
+        if (section.containsKey("transport")) {
+          JsonObject transport = section["transport"].as<JsonObject>();
+          if (transport.containsKey("shortName")) bi.busLabel = String(transport["shortName"].as<const char*>());
+          else if (transport.containsKey("name")) bi.busLabel = String(transport["name"].as<const char*>());
+          else if (transport.containsKey("longName")) bi.busLabel = String(transport["longName"].as<const char*>());
+        }
+
+        // station name: section.departure.place.name
+        if (section.containsKey("departure")) {
+          JsonObject departure = section["departure"].as<JsonObject>();
+          if (departure.containsKey("place")) {
+            JsonObject place = departure["place"].as<JsonObject>();
+            if (place.containsKey("name")) bi.stationName = String(place["name"].as<const char*>());
+          }
+          if (departure.containsKey("time")) {
+            bi.nextBusTime = isoToHHMM(String(departure["time"].as<const char*>()));
+          }
+        }
+
+        // fallback for nextBusTime: first intermediateStops departure.time
+        if (bi.nextBusTime.length() == 0 && section.containsKey("intermediateStops")) {
+          JsonVariant stopsVar = section["intermediateStops"];
+          if (stopsVar.is<JsonArray>()) {
+            JsonArray stops = stopsVar.as<JsonArray>();
+            if (stops.size() > 0) {
+              JsonObject firstStop = stops[0].as<JsonObject>();
+              if (firstStop.containsKey("departure")) {
+                JsonObject d = firstStop["departure"].as<JsonObject>();
+                if (d.containsKey("time")) bi.nextBusTime = isoToHHMM(String(d["time"].as<const char*>()));
+              }
+            }
+          }
+        }
+
+        // walkDistance and walkTime from prevPedSection.travelSummary if available
+        if (!prevPedSection.isNull() && prevPedSection.containsKey("travelSummary")) {
+          JsonObject travel = prevPedSection["travelSummary"].as<JsonObject>();
+          if (travel.containsKey("length")) {
+            double len = travel["length"].as<double>();
+            bi.walkDistance = lengthToMilesString(len);
+          }
+          if (travel.containsKey("duration")) {
+            int durSec = travel["duration"].as<int>();
+            int minutes = (durSec + 30) / 60;
+            bi.walkTime = String(minutes) + " min";
+          }
+        } else {
+          // fallback: try prevPedSection.actions[0].instruction crude parse
+          if (!prevPedSection.isNull() && prevPedSection.containsKey("actions")) {
+            JsonVariant actionsVar = prevPedSection["actions"];
+            if (actionsVar.is<JsonArray>()) {
+              JsonArray actions = actionsVar.as<JsonArray>();
+              if (actions.size() > 0) {
+                JsonObject a0 = actions[0].as<JsonObject>();
+                if (a0.containsKey("instruction")) {
+                  String instr = String(a0["instruction"].as<const char*>());
+                  int pos = instr.indexOf("Go for");
+                  if (pos >= 0) {
+                    String tail = instr.substring(pos);
+                    int dot = tail.indexOf('.');
+                    if (dot > 0) tail = tail.substring(0, dot);
+                    bi.walkDistance = tail; // e.g., "Go for 0.5 mi"
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        bi.valid = true;
+        outInfos.push_back(bi);
+        found = true;
+        break; // only the first transit section per route
+      }
+    } // end sections loop
+
+    // If route had no transit section, optionally push an invalid entry or skip (we skip)
+    (void)found;
+  } // end routes loop
+
+  return outInfos.size();
+}
+
+
+
+String httpGetDirections(String origin_lat, String origin_lon, String dest_lat, String dest_lon, String apiKey = "t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU") {
   WiFiClientSecure *client = new WiFiClientSecure();
   client->setInsecure(); // for testing only
   HTTPClient https;
+
+  String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=" + apiKey + "&destination=" + dest_lat + "%2C" + dest_lon + "&lang=en-US&origin=" + origin_lat + "%2C" + origin_lon + "&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
   https.begin(*client, url);
 
   // Add headers similar to the browser request
@@ -341,6 +509,25 @@ String httpGetDirections(const String &url) {
   } else {
     dbgSerial->printf("HTTP GET failed, code: %d, err: %s\n", httpCode, https.errorToString(httpCode).c_str());
   }
+
+  std::vector<BoardingInfo> infos;
+  size_t count = parseAllFirstBoardingInfos(result, infos);
+
+  if (count == 0) {
+    dbgSerial->println("No transit summary found");
+  } else {
+    for (size_t i = 0; i < infos.size(); ++i) {
+      BoardingInfo &b = infos[i];
+      dbgSerial->println("---");
+      dbgSerial->print("Bus: "); dbgSerial->println(b.busLabel);
+      dbgSerial->print("Walk distance: "); dbgSerial->println(b.walkDistance);
+      dbgSerial->print("Walk time: "); dbgSerial->println(b.walkTime);
+      dbgSerial->print("Station: "); dbgSerial->println(b.stationName);
+      dbgSerial->print("Next bus: "); dbgSerial->println(b.nextBusTime);
+    }
+  }
+
+
 
   https.end();
   delete client;
@@ -1582,20 +1769,6 @@ void searchForPatterns(JsonVariant v, Place places[], int &count, int maxPlaces)
   // primitives: nothing to do
 }
 
-String extractJsonPart(const String &raw) {
-  int startObj = raw.indexOf('{');
-  int startArr = raw.indexOf('[');
-  int start = -1;
-  if (startObj >= 0 && (startObj < startArr || startArr == -1)) start = startObj;
-  else start = startArr;
-  if (start == -1) return String();
-
-  int endObj = raw.lastIndexOf('}');
-  int endArr = raw.lastIndexOf(']');
-  int end = max(endObj, endArr);
-  if (end == -1 || end < start) return String();
-  return raw.substring(start, end + 1);
-}
 
 
 
@@ -2547,13 +2720,18 @@ void setup() {
   // std::vector<BoardingInfo> n = getDirections("434 Fifth Avenue, Pittsburgh, PA", "Highland Park, Pittsburgh, PA 15206", c.lat, c.lon, true);
   // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQWphb0V0Zi1tNUdjTWY0RzN0R1ZRNEMlM0FDZ2dJQkNEa3pxSEpBeEFCR2dNME16UTtsYXQ9NDAuNDM5Njk7bG9uPS03OS45OTgwNztuPTQzNCUyMDV0aCUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjE5LTE3MDQlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9/s-Yz01NTAtNTUyMC0wMDAwO2lkPWhlcmUlM0FwZHMlM0FwbGFjZSUzQTg0MGRwcG41LWIzZWU0MGUyODVjZjExMGZiODU5NDMwZWYzZmQ4ZjdkO2xhdD00MC40NTA4Nztsb249LTc5Ljg5NTY2O249QXNjZW5kJTIwUG9pbnQlMjBCcmVlemU7cGg9?map=40.45008,-79.94687,13.01
   // Found cool method to reverse-engineer (it's the routes endpoint, apikey might change or something so be wary)
-  // String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU&destination=40.45087%2C-79.89566&lang=en-US&origin=40.43969%2C-79.99807&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
   // String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU&destination=40.492322%2C-79.901944&lang=en-US&origin=40.43969%2C-79.99807&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
-  // String body = httpGetDirections(url);
+  String origin_test_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+  String origin_test_lon = "-79.921356";
+  String dest_test_lat = "40.474045"; //Leech Farm Rd, Pittsburgh, PA 15206, United States
+  String dest_test_lon = "-79.905302";
+
+  
+  String body = httpGetDirections(origin_test_lat, origin_test_lon, dest_test_lat, dest_test_lon);
   // Serial.println(body);
 
-  int PLACE_MAX = 3;
-  std::vector<placeIdentifier> placesDebug = getPlaces("Two", placesStart, PLACE_MAX, c.lat, c.lon, true);
+  // int PLACE_MAX = 3;
+  // std::vector<placeIdentifier> placesDebug = getPlaces("Two", placesStart, PLACE_MAX, c.lat, c.lon, true);
 
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
