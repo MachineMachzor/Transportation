@@ -104,6 +104,13 @@ struct BoardingInfo {
 };
 
 
+struct placeIdentifier {
+  String place;
+  float lat;
+  float lon;
+};
+
+
 struct keys {
   String ssid = "SSID";
   String pass = "PASS";
@@ -1655,19 +1662,29 @@ std::vector<String> getPlaces(String searchQuery, Place places[], int maxPlaces,
 
   String body = httpGetStream(url);
   logMessage("Response length: " + String(body.length()));
-  // dbgSerial->println(body); // or parse it
+  if (verbose) {
+    // dbgSerial->println(body); // or parse it
+  }
+  
   std::vector<String> placeRetStrings;
+  std::vector<placeIdentifier> placeIdentifiers;
   
   int count = parsePlacesFromBody(body, places, MAX_RESULTS);
 
   dbgSerial->printf("Found %d places:\n", count);
   for (int i = 0; i < count; ++i) {
+    placeIdentifier pid;
+    pid.place = places[i].name;
     // dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
     placeRetStrings.push_back(places[i].name.c_str());
     if (verbose) {
-      dbgSerial->printf("%s\n", places[i].name.c_str());
+      dbgSerial->printf("%s ", places[i].name.c_str());
+      dbgSerial->printf("%f, ", places[i].lat);
+      dbgSerial->printf("%f\n", places[i].lon);
     }
+    placeIdentifiers.push_back(pid);
   }
+  
   return placeRetStrings;
 }
 
@@ -2463,10 +2480,14 @@ void setup() {
 
   // std::vector<BoardingInfo> n = getDirections("434 Fifth Avenue, Pittsburgh, PA", "Highland Park, Pittsburgh, PA 15206", c.lat, c.lon, true);
   // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQWphb0V0Zi1tNUdjTWY0RzN0R1ZRNEMlM0FDZ2dJQkNEa3pxSEpBeEFCR2dNME16UTtsYXQ9NDAuNDM5Njk7bG9uPS03OS45OTgwNztuPTQzNCUyMDV0aCUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjE5LTE3MDQlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9/s-Yz01NTAtNTUyMC0wMDAwO2lkPWhlcmUlM0FwZHMlM0FwbGFjZSUzQTg0MGRwcG41LWIzZWU0MGUyODVjZjExMGZiODU5NDMwZWYzZmQ4ZjdkO2xhdD00MC40NTA4Nztsb249LTc5Ljg5NTY2O249QXNjZW5kJTIwUG9pbnQlMjBCcmVlemU7cGg9?map=40.45008,-79.94687,13.01
-  // Found cool method to reverse-engineer
-  String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU&destination=40.45087%2C-79.89566&lang=en-US&origin=40.43969%2C-79.99807&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
-  String body = httpGetDirections(url);
-  Serial.println(body);
+  // Found cool method to reverse-engineer (it's the routes endpoint, apikey might change or something so be wary)
+  // String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU&destination=40.45087%2C-79.89566&lang=en-US&origin=40.43969%2C-79.99807&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
+  // String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU&destination=40.492322%2C-79.901944&lang=en-US&origin=40.43969%2C-79.99807&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
+  // String body = httpGetDirections(url);
+  // Serial.println(body);
+
+  int PLACE_MAX = 3;
+  std::vector<String> placesDebug = getPlaces("Two", placesStart, PLACE_MAX, c.lat, c.lon, true);
 
         
   server.on("/",         HTTP_GET, handleIndex);
