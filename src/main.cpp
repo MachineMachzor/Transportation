@@ -25,7 +25,7 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = false;//If false, should be production nextion
+const bool TESTING_NEXTION = true;//If false, should be production nextion
 const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one, false for production
 const bool RESET_SAVED_WIFI = true; //Set to true to reset saved wifi credentials, this should be false in production
 
@@ -39,9 +39,9 @@ const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecti
 const bool SKIP_WIFI_SELECTION = true;
 const bool SKIP_WIFI_LOGIN = true;
 const bool SKIP_ADDR_CHOOSE = true;
-const bool SKIP_FIRST_BUS_SELECT = true;
-const bool SKIP_WALKTIME_SET = true;
-const bool SKIP_INFO_PAGE = true;
+const bool SKIP_FIRST_BUS_SELECT = false;
+const bool SKIP_WALKTIME_SET = false;
+const bool SKIP_INFO_PAGE = false;
 
 // Set all of these to false in production to not reset saved settings
 const bool RESET_SAVED_ADDRS = true;
@@ -356,7 +356,7 @@ static String lengthToMilesString(double len) {
   // miles = round(miles * 100.0) / 100.0;
   miles = round1(miles);
   // return String(miles, 2) + " mi";
-  return String(miles) + " mi";
+  return String(miles);// + " mi";
 }
 
 String extractJsonPart(const String &raw) {
@@ -467,7 +467,7 @@ size_t parseAllFirstBoardingInfos(const String &jsonPart, std::vector<BoardingIn
           if (travel.containsKey("duration")) {
             int durSec = travel["duration"].as<int>();
             int minutes = (durSec + 30) / 60;
-            bi.walkTime = String(minutes) + " min";
+            bi.walkTime = String(minutes);// + " min";
           }
         } 
         // else {
@@ -519,7 +519,7 @@ size_t parseAllFirstBoardingInfos(const String &jsonPart, std::vector<BoardingIn
 
 
 
-String httpGetDirections(String origin_lat, String origin_lon, String dest_lat, String dest_lon, bool verbose=false, String apiKey = "t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU") {
+std::vector<BoardingInfo> httpGetDirections(String origin_lat, String origin_lon, String dest_lat, String dest_lon, bool verbose=false, String apiKey = "t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU") {
   WiFiClientSecure *client = new WiFiClientSecure();
   client->setInsecure(); // for testing only
   HTTPClient https;
@@ -571,15 +571,18 @@ String httpGetDirections(String origin_lat, String origin_lon, String dest_lat, 
 
   if (count == 0) {
     dbgSerial->println("No transit summary found");
-  } else {
-    for (size_t i = 0; i < infos.size(); ++i) {
-      BoardingInfo &b = infos[i];
-      dbgSerial->println("---");
-      dbgSerial->print("Bus: "); dbgSerial->println(b.busLabel);
-      dbgSerial->print("Walk distance: "); dbgSerial->println(b.walkDistance);
-      dbgSerial->print("Walk time: "); dbgSerial->println(b.walkTime);
-      dbgSerial->print("Station: "); dbgSerial->println(b.stationName);
-      dbgSerial->print("Next bus: "); dbgSerial->println(b.nextBusTime);
+  } 
+  else {
+    if (verbose) {
+      for (size_t i = 0; i < infos.size(); ++i) {
+        BoardingInfo &b = infos[i];
+        dbgSerial->println("---");
+        dbgSerial->print("Bus: "); dbgSerial->println(b.busLabel);
+        dbgSerial->print("Walk distance: "); dbgSerial->print(b.walkDistance); dbgSerial->println(" mi");
+        dbgSerial->print("Walk time: "); dbgSerial->println(b.walkTime); dbgSerial->println(" min");
+        dbgSerial->print("Station: "); dbgSerial->println(b.stationName);
+        dbgSerial->print("Next bus: "); dbgSerial->println(b.nextBusTime);
+      }
     }
   }
 
@@ -587,7 +590,7 @@ String httpGetDirections(String origin_lat, String origin_lon, String dest_lat, 
 
   https.end();
   delete client;
-  return result;
+  return infos;//result;
 }
 
 
@@ -1041,8 +1044,15 @@ String joinWithNewline(const std::vector<String>& v) {
 }
 
 
+String firstBusOnlySaved = "1"; //1 == first bus (proclaimed to be the best), 0 == try to find usual bus
+
+
 void safeSetPage(String page) {
   if (pageTracker != page) {
+    if (page == "InfoPage") {
+      firstBusOnlySaved = loadStringSetting(CONST_KEYS.firstBusOnly.c_str());
+      sendCommand("c0.val=" + firstBusOnlySaved); //Reload saved setting on this page
+    }
     sendCommand("");
     String cmd = "page " + page;
     sendCommand(cmd);
@@ -2304,7 +2314,6 @@ WifiCredentials block_wifiLogin() {
 float walkTime = WALKTIME_NONE;
 float milesComputeSaved = WALKTIME_NONE;
 String bus = "";
-String firstBusOnlySaved = "false";
 int reloadAttempt = 0;
 
 void block_walkTimeBus() {
@@ -2325,7 +2334,9 @@ void block_walkTimeBus() {
       // locals.startAddr = 
       // locals.endAddr = 
       logMessage("Before getting directions, startAddr: " + startAddr + ", endAddr: " + endAddr);
-      std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
+      // std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
+
+      std::vector<BoardingInfo> n = httpGetDirections(origin_lat, origin_lon, dest_lat, dest_lon, false);
 
       
       for (int i = 0; i < n.size(); ++i) {
@@ -2372,8 +2383,8 @@ void block_walkTimeBus() {
           //Continue button 
           if (dist.length() > 0 && walk.length() > 0) {
             walkTime = minutesStringToFloat(walk);//.toInt();
-            milesComputeSaved = distanceStringToMiles(dist);
-            String forLog = "Using Walk Distance: " + String(milesComputeSaved) + ", Walk Time: " + String(walkTime) + ", Bus: " + bus;
+            milesComputeSaved = dist.toFloat();//distanceStringToMiles(dist);
+            String forLog = "Using Walk Distance: " + String(milesComputeSaved) + " mi, Walk Time: " + String(walkTime) + " min, Bus: " + bus;
             logMessage(forLog);
             // sendCommand("t1.txt=\"" + forLog + "\""); // show what we're using
             
@@ -2388,7 +2399,7 @@ void block_walkTimeBus() {
     } else {
       // Testing
       // walkTime = 10;
-      bus = "64";
+      bus = "P1";
       
       // safeSetPage("Walk");
     }
@@ -2452,6 +2463,9 @@ void block_infoPage() {
     sendCommand("get c0.val");
     String useBestBusStr = getButtonText(*nextionSerial); // flush any prior response
     bool useBestBus = (useBestBusStr == "1");
+    if (useBestBusStr != firstBusOnlySaved) {
+      saveSetting(CONST_KEYS.firstBusOnly.c_str(), useBestBusStr.c_str());
+    }
     // startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
     // endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
     // std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
@@ -2488,7 +2502,8 @@ void block_infoPage() {
     if (n.size() > 0) {
       String utcTimeNow = getTimeNowUTC();
       String nextBusTimeStr = n[0].nextBusTime;
-      float walkDistNew = distanceStringToMiles(n[0].walkDistance);
+      // float walkDistNew = distanceStringToMiles(n[0].walkDistance);
+      float walkDistNew = n[0].walkDistance.toFloat();
       int diffTimeMin = minutesDifferenceFromEpochMs(utcTimeNow, nextBusTimeStr.c_str());
       String busUsed = n[0].busLabel;
       String firstLocation = n[0].stationName;
@@ -2708,7 +2723,12 @@ void setup() {
       } else {
         // logMessage("SKIP_ADDR_CHOOSE set, using prior addresses");
         startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
-        endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
+        endAddr = "Two PNC Plaza, Pittsburgh, PA 15222";
+        // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
+        origin_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+        origin_lon = "-79.921356";
+        dest_lat = "40.442115"; //Two PNC Plaza, Pittsburgh, PA 15222
+        dest_lon = "-80.000915";
       }
       
     }
@@ -2764,13 +2784,11 @@ void setup() {
 
 
   // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
-  String origin_test_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
-  String origin_test_lon = "-79.921356";
-  String dest_test_lat = "40.442115"; //Two PNC Plaza
-  String dest_test_lon = "-80.000915";
-
-  String body = httpGetDirections(origin_test_lat, origin_test_lon, dest_test_lat, dest_test_lon, true);
-  // Serial.println(body);
+  // String origin_test_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+  // String origin_test_lon = "-79.921356";
+  // String dest_test_lat = "40.442115"; //Two PNC Plaza
+  // String dest_test_lon = "-80.000915";
+  // std::vector<BoardingInfo> infos = httpGetDirections(origin_test_lat, origin_test_lon, dest_test_lat, dest_test_lon, true);
 
   // int PLACE_MAX = 3;
   // std::vector<placeIdentifier> placesDebug = getPlaces("Two", placesStart, PLACE_MAX, c.lat, c.lon, true);
