@@ -270,6 +270,27 @@ String loadStringSetting(const char* key, const char* defaultVal = "") {
   return v;
 }
 
+String logBuffer = "";
+static std::vector<String> logLines;  
+static int holdMessageCount = 100; //8;  // holds up to N messages
+
+void logMessage(const String& msg) {
+  logBuffer = "";
+  logLines.push_back(msg);
+  if (logLines.size() > holdMessageCount) {
+    logLines.erase(logLines.begin());
+  }
+
+  // logBuffer += msg + "\n";
+  for (auto &line : logLines) {
+    logBuffer += line + "\n";
+  }
+
+  dbgSerial->println(msg);
+  if (logBuffer.length() > 1024) logBuffer = logBuffer.substring(512);  // keep it trimmed
+}
+
+
 String httpGetStream(const String &url) {
   WiFiClientSecure *client = new WiFiClientSecure; //Allocates TLS (transport layer security, wifi based communication between server and web ) on the heap so we can delete later
   client->setInsecure();// disable certificate verification (SSL). For production, use root CA or fingerprint
@@ -478,6 +499,11 @@ String httpGetDirections(String origin_lat, String origin_lon, String dest_lat, 
   client->setInsecure(); // for testing only
   HTTPClient https;
 
+
+  // std::vector<BoardingInfo> n = getDirections("434 Fifth Avenue, Pittsburgh, PA", "Highland Park, Pittsburgh, PA 15206", c.lat, c.lon, true);
+  // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQWphb0V0Zi1tNUdjTWY0RzN0R1ZRNEMlM0FDZ2dJQkNEa3pxSEpBeEFCR2dNME16UTtsYXQ9NDAuNDM5Njk7bG9uPS03OS45OTgwNztuPTQzNCUyMDV0aCUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjE5LTE3MDQlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9/s-Yz01NTAtNTUyMC0wMDAwO2lkPWhlcmUlM0FwZHMlM0FwbGFjZSUzQTg0MGRwcG41LWIzZWU0MGUyODVjZjExMGZiODU5NDMwZWYzZmQ4ZjdkO2xhdD00MC40NTA4Nztsb249LTc5Ljg5NTY2O249QXNjZW5kJTIwUG9pbnQlMjBCcmVlemU7cGg9?map=40.45008,-79.94687,13.01
+  // Found cool method to reverse-engineer (it's the routes endpoint, apikey might change or something so be wary)
+  // String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU&destination=40.492322%2C-79.901944&lang=en-US&origin=40.43969%2C-79.99807&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
   String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=" + apiKey + "&destination=" + dest_lat + "%2C" + dest_lon + "&lang=en-US&origin=" + origin_lat + "%2C" + origin_lon + "&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
   https.begin(*client, url);
 
@@ -509,6 +535,7 @@ String httpGetDirections(String origin_lat, String origin_lon, String dest_lat, 
   } else {
     dbgSerial->printf("HTTP GET failed, code: %d, err: %s\n", httpCode, https.errorToString(httpCode).c_str());
   }
+  logMessage("Directions Response length: " + String(result.length()));
 
   std::vector<BoardingInfo> infos;
   size_t count = parseAllFirstBoardingInfos(result, infos);
@@ -542,25 +569,8 @@ struct currentLocation {
 
 
 
-String logBuffer = "";
-static std::vector<String> logLines;  
-static int holdMessageCount = 100; //8;  // holds up to N messages
 
-void logMessage(const String& msg) {
-  logBuffer = "";
-  logLines.push_back(msg);
-  if (logLines.size() > holdMessageCount) {
-    logLines.erase(logLines.begin());
-  }
 
-  // logBuffer += msg + "\n";
-  for (auto &line : logLines) {
-    logBuffer += line + "\n";
-  }
-
-  dbgSerial->println(msg);
-  if (logBuffer.length() > 1024) logBuffer = logBuffer.substring(512);  // keep it trimmed
-}
 
 
 void handleIndex() {
@@ -2717,10 +2727,7 @@ void setup() {
   // logMessage("Test compute walktime of 10 min for 0.5 miles with new miles of 1.2: " + String(newWalkTime(10, 0.5, 1.2)) + " min");
   
 
-  // std::vector<BoardingInfo> n = getDirections("434 Fifth Avenue, Pittsburgh, PA", "Highland Park, Pittsburgh, PA 15206", c.lat, c.lon, true);
-  // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQWphb0V0Zi1tNUdjTWY0RzN0R1ZRNEMlM0FDZ2dJQkNEa3pxSEpBeEFCR2dNME16UTtsYXQ9NDAuNDM5Njk7bG9uPS03OS45OTgwNztuPTQzNCUyMDV0aCUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjE5LTE3MDQlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9/s-Yz01NTAtNTUyMC0wMDAwO2lkPWhlcmUlM0FwZHMlM0FwbGFjZSUzQTg0MGRwcG41LWIzZWU0MGUyODVjZjExMGZiODU5NDMwZWYzZmQ4ZjdkO2xhdD00MC40NTA4Nztsb249LTc5Ljg5NTY2O249QXNjZW5kJTIwUG9pbnQlMjBCcmVlemU7cGg9?map=40.45008,-79.94687,13.01
-  // Found cool method to reverse-engineer (it's the routes endpoint, apikey might change or something so be wary)
-  // String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU&destination=40.492322%2C-79.901944&lang=en-US&origin=40.43969%2C-79.99807&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
+  
   String origin_test_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
   String origin_test_lon = "-79.921356";
   String dest_test_lat = "40.474045"; //Leech Farm Rd, Pittsburgh, PA 15206, United States
