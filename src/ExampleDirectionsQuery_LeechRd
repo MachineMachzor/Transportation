@@ -1,0 +1,1400 @@
+{
+  "routes": [
+    {
+      "id": "R0",
+      "sections": [
+        {
+          "id": "R0-S0",
+          "type": "pedestrian",
+          "actions": [
+            {
+              "action": "depart",
+              "duration": 746,
+              "instruction": "Head northwest on Shady Ave. Go for 0.5 mi.",
+              "length": 735,
+              "offset": 0
+            },
+            {
+              "action": "turn",
+              "duration": 17,
+              "instruction": "Turn right onto Penn Ave. Go for 56 ft.",
+              "length": 17,
+              "offset": 24,
+              "direction": "right",
+              "severity": "quite"
+            },
+            {
+              "action": "arrive",
+              "duration": 0,
+              "instruction": "Arrive at Penn Ave. Your destination is on the left.",
+              "length": 0,
+              "offset": 25
+            }
+          ],
+          "travelSummary": {
+            "duration": 480,
+            "length": 752
+          },
+          "departure": {
+            "time": "2025-12-14T12:32:00-05:00",
+            "place": {
+              "type": "place",
+              "location": {
+                "lat": 40.453953,
+                "lng": -79.921356
+              }
+            }
+          },
+          "arrival": {
+            "time": "2025-12-14T12:40:00-05:00",
+            "place": {
+              "name": "Penn Ave Opp Shady Ave",
+              "type": "station",
+              "location": {
+                "lat": 40.459718,
+                "lng": -79.920499
+              },
+              "id": "5775_2381",
+              "code": "22726"
+            }
+          },
+          "polyline": "BG6zjltCvtgu4E2jB_V4wB_dsTvMkNjI0F7BsEAoGAwM8B0K8BsO8BwHoBgKoB8GoBkIoBo4BwH8GoBkNwCsdgFgKkDsEwCgF0FoQwgBoG4NwMoflGiJ",
+          "transport": {
+            "mode": "pedestrian"
+          }
+        },
+        {
+          "id": "R0-S1",
+          "type": "transit",
+          "travelSummary": {
+            "duration": 660,
+            "length": 3821
+          },
+          "departure": {
+            "time": "2025-12-14T12:40:00-05:00",
+            "place": {
+              "name": "Penn Ave Opp Shady Ave",
+              "type": "station",
+              "location": {
+                "lat": 40.459718,
+                "lng": -79.920499
+              },
+              "id": "5775_2381",
+              "code": "22726"
+            }
+          },
+          "arrival": {
+            "time": "2025-12-14T12:51:00-05:00",
+            "place": {
+              "name": "Lemington Ave + Wardsons",
+              "type": "station",
+              "location": {
+                "lat": 40.471383,
+                "lng": -79.898108
+              },
+              "id": "5775_1662",
+              "code": "8403"
+            }
+          },
+          "polyline": "BH4702jY7nzr0vBvRrTwmIvjMw3Cn8Ew-BviFoG_jDgvFvgQwiF_oN4S_qC4rBnqDsTkNrTjNwM3rB46Gn-S0UwMzUvMof_jDgoG4kCgpNgoGnLsiBoLriBguX43K_E8LgF7L4mpBwkT3Ikc4Ijcw3CwlB_xB4lJvMnGwMoGnqD4pM_9KoufjNzKkN0K_8D4wLvwDogI3Sw-B32DouG3oF46G_zPo6PogIgwMvHoLwHnLwlBgyBogIw8MrJkNsJjNg4SwpdrJoLsJnLofgyB4sIw2UvR0KwRzKo8E4iN42Dw_I_Y0PgZzPovNgsiBw3C4zHghH41VgsJorjB7QkI8QjIofoxC46GgoGg2Eo8EvMwWwMvW4wLwqL4kCgrCjNgUkN_To4Bw-BvhXg0oBjX7VkX8Vn4B49C4pMwtgB3XjN4XkNw5Qo3sBwMwlB_OsJgPrJofw3CogIgzhBo4BogInQ8GoQ7GgZgkDggZnwUsOoa",
+          "transport": {
+            "mode": "bus",
+            "name": "74",
+            "category": "Bus",
+            "color": "#ffffff",
+            "textColor": "#000000",
+            "headsign": "HOMEWOOD-SQUIRREL HILL TO BEECHWOOD-TILBURY",
+            "shortName": "74",
+            "longName": "HOMEWOOD-SQUIRREL HILL",
+            "wheelchairAccessible": "yes"
+          },
+          "intermediateStops": [
+            {
+              "departure": {
+                "time": "2025-12-14T12:42:00-05:00",
+                "place": {
+                  "name": "Penn Ave + Sheridan Ave",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.461031,
+                    "lng": -79.923589
+                  },
+                  "id": "5775_2344",
+                  "code": "8881"
+                }
+              },
+              "offset": 10
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:43:00-05:00",
+                "place": {
+                  "name": "Penn Ave + Highland Ave",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.461403,
+                    "lng": -79.92463
+                  },
+                  "id": "5775_2302",
+                  "code": "8882"
+                }
+              },
+              "offset": 14
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:43:00-05:00",
+                "place": {
+                  "name": "Highland Ave + Broad St",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.462402,
+                    "lng": -79.924325
+                  },
+                  "id": "5775_12128",
+                  "code": "22808"
+                }
+              },
+              "offset": 19
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:43:00-05:00",
+                "place": {
+                  "name": "Highland Ave + Station St",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.463612,
+                    "lng": -79.923811
+                  },
+                  "id": "5775_1353",
+                  "code": "3270"
+                }
+              },
+              "offset": 22
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:44:00-05:00",
+                "place": {
+                  "name": "Highland Ave + East Liberty Blvd",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.465716,
+                    "lng": -79.922805
+                  },
+                  "id": "5775_1343",
+                  "code": "3272"
+                }
+              },
+              "offset": 25
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:44:00-05:00",
+                "place": {
+                  "name": "East Liberty Blvd + Highland Ave FS",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.46577,
+                    "lng": -79.92233
+                  },
+                  "id": "5775_850",
+                  "code": "20101"
+                }
+              },
+              "offset": 29
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:45:00-05:00",
+                "place": {
+                  "name": "East Liberty Blvd + Centre Ave",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.465039,
+                    "lng": -79.920097
+                  },
+                  "id": "5775_855",
+                  "code": "20100"
+                }
+              },
+              "offset": 33
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:46:00-05:00",
+                "place": {
+                  "name": "Larimer Ave at Auburn St",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.463788,
+                    "lng": -79.916832
+                  },
+                  "id": "5775_11715",
+                  "code": "22485"
+                }
+              },
+              "offset": 42
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:46:00-05:00",
+                "place": {
+                  "name": "Larimer Ave + Mayflower",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.464255,
+                    "lng": -79.916089
+                  },
+                  "id": "5775_3291",
+                  "code": "18970"
+                }
+              },
+              "offset": 46
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:47:00-05:00",
+                "place": {
+                  "name": "Larmier Ave + Meadow",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.465215,
+                    "lng": -79.914592
+                  },
+                  "id": "5775_3161",
+                  "code": "18976"
+                }
+              },
+              "offset": 49
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:47:00-05:00",
+                "place": {
+                  "name": "Larimer Ave + Winslow",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.465682,
+                    "lng": -79.913453
+                  },
+                  "id": "5775_3360",
+                  "code": "20398"
+                }
+              },
+              "offset": 53
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:47:00-05:00",
+                "place": {
+                  "name": "Larimer Ave + Shetland",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.46611,
+                    "lng": -79.912315
+                  },
+                  "id": "5775_3361",
+                  "code": "20399"
+                }
+              },
+              "offset": 57
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:48:00-05:00",
+                "place": {
+                  "name": "Larimer Ave + Deary",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.467793,
+                    "lng": -79.907257
+                  },
+                  "id": "5775_3101",
+                  "code": "8553"
+                }
+              },
+              "offset": 63
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:49:00-05:00",
+                "place": {
+                  "name": "Larimer Ave + Apple",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.46844,
+                    "lng": -79.906534
+                  },
+                  "id": "5775_1623",
+                  "code": "8396"
+                }
+              },
+              "offset": 68
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:49:00-05:00",
+                "place": {
+                  "name": "Larimer Ave + Dean",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.469139,
+                    "lng": -79.905838
+                  },
+                  "id": "5775_1629",
+                  "code": "8397"
+                }
+              },
+              "offset": 72
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:49:00-05:00",
+                "place": {
+                  "name": "Dean St + Paulson",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.468033,
+                    "lng": -79.903725
+                  },
+                  "id": "5775_793",
+                  "code": "8398"
+                }
+              },
+              "offset": 76
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:50:00-05:00",
+                "place": {
+                  "name": "Paulson Ave + Brainard",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.468572,
+                    "lng": -79.901901
+                  },
+                  "id": "5775_2210",
+                  "code": "8400"
+                }
+              },
+              "offset": 80
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:51:00-05:00",
+                "place": {
+                  "name": "Paulson Ave + Olivant",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.469466,
+                    "lng": -79.899515
+                  },
+                  "id": "5775_2217",
+                  "code": "8401"
+                }
+              },
+              "offset": 84
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:51:00-05:00",
+                "place": {
+                  "name": "Paulson Ave + Lemington",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.470014,
+                    "lng": -79.897249
+                  },
+                  "id": "5775_2214",
+                  "code": "8402"
+                }
+              },
+              "offset": 89
+            }
+          ],
+          "agency": {
+            "id": "5775_6b86b27",
+            "name": "Pittsburgh Regional Transit",
+            "website": "https://www.rideprt.org"
+          }
+        },
+        {
+          "id": "R0-S2",
+          "type": "pedestrian",
+          "actions": [
+            {
+              "action": "depart",
+              "duration": 175,
+              "instruction": "Head northwest on Lemington Ave. Go for 0.1 mi.",
+              "length": 172,
+              "offset": 0
+            },
+            {
+              "action": "turn",
+              "duration": 481,
+              "instruction": "Turn left onto Lemington Ave. Go for 0.3 mi.",
+              "length": 475,
+              "offset": 3,
+              "direction": "left",
+              "severity": "quite"
+            },
+            {
+              "action": "turn",
+              "duration": 78,
+              "instruction": "Turn left onto Highland Dr. Go for 256 ft.",
+              "length": 78,
+              "offset": 14,
+              "direction": "left",
+              "severity": "quite"
+            },
+            {
+              "action": "arrive",
+              "duration": 0,
+              "instruction": "Arrive at Highland Dr.",
+              "length": 0,
+              "offset": 15
+            }
+          ],
+          "travelSummary": {
+            "duration": 480,
+            "length": 724
+          },
+          "departure": {
+            "time": "2025-12-14T12:51:00-05:00",
+            "place": {
+              "name": "Lemington Ave + Wardsons",
+              "type": "station",
+              "location": {
+                "lat": 40.471383,
+                "lng": -79.898108
+              },
+              "id": "5775_1662",
+              "code": "8403"
+            }
+          },
+          "arrival": {
+            "time": "2025-12-14T12:59:00-05:00",
+            "place": {
+              "type": "place",
+              "location": {
+                "lat": 40.474045,
+                "lng": -79.905302
+              }
+            }
+          },
+          "polyline": "BGo0lmtClizs4EkEpD8V3S03BrsB4DnL0KnkBsJ_xB4DnxCoB3NwC3N4D3N0e_0CoG7LsE_EsE7BwEj5B",
+          "transport": {
+            "mode": "pedestrian"
+          }
+        }
+      ]
+    },
+    {
+      "id": "R1",
+      "sections": [
+        {
+          "id": "R1-S0",
+          "type": "pedestrian",
+          "actions": [
+            {
+              "action": "depart",
+              "duration": 746,
+              "instruction": "Head northwest on Shady Ave. Go for 0.5 mi.",
+              "length": 735,
+              "offset": 0
+            },
+            {
+              "action": "turn",
+              "duration": 78,
+              "instruction": "Turn right onto Penn Ave. Go for 256 ft.",
+              "length": 78,
+              "offset": 24,
+              "direction": "right",
+              "severity": "quite"
+            },
+            {
+              "action": "arrive",
+              "duration": 0,
+              "instruction": "Arrive at Penn Ave. Your destination is on the right.",
+              "length": 0,
+              "offset": 27
+            }
+          ],
+          "travelSummary": {
+            "duration": 540,
+            "length": 814
+          },
+          "departure": {
+            "time": "2025-12-14T12:27:00-05:00",
+            "place": {
+              "type": "place",
+              "location": {
+                "lat": 40.453953,
+                "lng": -79.921356
+              }
+            }
+          },
+          "arrival": {
+            "time": "2025-12-14T12:36:00-05:00",
+            "place": {
+              "name": "Penn Ave + Shady Ave FS (Giant Eagle)",
+              "type": "station",
+              "location": {
+                "lat": 40.459236,
+                "lng": -79.920097
+              },
+              "id": "5775_2343",
+              "code": "8276"
+            }
+          },
+          "polyline": "BG6zjltCvtgu4E2jB_V4wB_dsTvMkNjI0F7BsEAoGAwM8B0K8BsO8BwHoBgKoB8GoBkIoBo4BwH8GoBkNwCsdgFgKkDsEwCgF0FoQwgBoG4NwMof3SwbrEoGpG2I",
+          "transport": {
+            "mode": "pedestrian"
+          }
+        },
+        {
+          "id": "R1-S1",
+          "type": "transit",
+          "travelSummary": {
+            "duration": 660,
+            "length": 2891
+          },
+          "departure": {
+            "time": "2025-12-14T12:36:00-05:00",
+            "place": {
+              "name": "Penn Ave + Shady Ave FS (Giant Eagle)",
+              "type": "station",
+              "location": {
+                "lat": 40.459236,
+                "lng": -79.920097
+              },
+              "id": "5775_2343",
+              "code": "8276"
+            },
+            "delay": 540
+          },
+          "arrival": {
+            "time": "2025-12-14T12:47:00-05:00",
+            "place": {
+              "name": "Lincoln Ave + Lemington",
+              "type": "station",
+              "location": {
+                "lat": 40.468661,
+                "lng": -79.896124
+              },
+              "id": "5775_1744",
+              "code": "8806"
+            },
+            "delay": 540
+          },
+          "polyline": "BHwur2jYzsrr0vBgP8Q_qCoqD3rB42D3iNo-SzZjhB0ZkhB34R4yZ49Cg9Do5Iw4Jnf8Vof7Vg-KwiF4jUo9L7GgU8G_TgyBofgyBgyB4vEo4B49C4SwwDAooEvgBo-D_dwlBg-KvwDokL_uFg0PwM46G4rBglKzeoG0enGg9Dwwc3S8B4S7Bw3CwrSwwDgwMrT4IsT3I4SgyBglKgsiBjXgKkX_JouGopVwiFglKzPoL0PnLg_Rw_hBwlBgrC_OwRgPvR49Cw7FgyBwiFw3CokLvW8LwW7Lw0GwsZzUsJ0UrJoGgyBwwDgwMwlBwiFnVwHoVvHwMwlB4zHojdw3Cg-K7VwH8VvHwMw-B4oFo1FovNgwMouGw3C3D8Q4D7Qw2Ug6HoqDgyB47Nw_IrJsYsJrYg6HwiF4kCw-B4oFogIjSwW",
+          "transport": {
+            "mode": "bus",
+            "name": "82",
+            "category": "Bus",
+            "color": "#ffffff",
+            "textColor": "#000000",
+            "headsign": "LINCOLN VIA CENTRE AVENUE",
+            "shortName": "82",
+            "longName": "LINCOLN",
+            "wheelchairAccessible": "yes"
+          },
+          "intermediateStops": [
+            {
+              "departure": {
+                "time": "2025-12-14T12:36:00-05:00",
+                "place": {
+                  "name": "Penn Ave + Village OF Eastside Shopping Center",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.458359,
+                    "lng": -79.918793
+                  },
+                  "id": "5775_2278",
+                  "code": "8277"
+                }
+              },
+              "offset": 5
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:37:00-05:00",
+                "place": {
+                  "name": "East Liberty Blvd + Dahlem Pl",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.45804,
+                    "lng": -79.916695
+                  },
+                  "id": "5775_768",
+                  "code": "8541"
+                }
+              },
+              "offset": 10
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:38:00-05:00",
+                "place": {
+                  "name": "East Liberty Blvd + Hamilton Ave",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.459669,
+                    "lng": -79.915828
+                  },
+                  "id": "5775_770",
+                  "code": "8542"
+                }
+              },
+              "offset": 14
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:38:00-05:00",
+                "place": {
+                  "name": "East Liberty Blvd + Frankstown Ave",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.460617,
+                    "lng": -79.915665
+                  },
+                  "id": "5775_769",
+                  "code": "8543"
+                }
+              },
+              "offset": 21
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:39:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave at Frankstown Ave FS",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.460461,
+                    "lng": -79.9129
+                  },
+                  "id": "5775_12036",
+                  "code": "22672"
+                }
+              },
+              "offset": 28
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:40:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Mayflower St (#408)",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.46068,
+                    "lng": -79.911447
+                  },
+                  "id": "5775_1753",
+                  "code": "8795"
+                }
+              },
+              "offset": 31
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:40:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Meadow",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.460999,
+                    "lng": -79.909856
+                  },
+                  "id": "5775_1748",
+                  "code": "8796"
+                }
+              },
+              "offset": 35
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:41:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Shetland",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.461543,
+                    "lng": -79.908014
+                  },
+                  "id": "5775_1758",
+                  "code": "8797"
+                }
+              },
+              "offset": 39
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:42:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Renfrew",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.462145,
+                    "lng": -79.906402
+                  },
+                  "id": "5775_1769",
+                  "code": "8798"
+                }
+              },
+              "offset": 43
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:42:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Atwell",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.463126,
+                    "lng": -79.904532
+                  },
+                  "id": "5775_1737",
+                  "code": "8799"
+                }
+              },
+              "offset": 47
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:43:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Lyric St",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.463484,
+                    "lng": -79.903411
+                  },
+                  "id": "5775_11711",
+                  "code": "21720"
+                }
+              },
+              "offset": 52
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:43:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Upland",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.463827,
+                    "lng": -79.902115
+                  },
+                  "id": "5775_1751",
+                  "code": "8801"
+                }
+              },
+              "offset": 55
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:44:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Deary St",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.464076,
+                    "lng": -79.901138
+                  },
+                  "id": "5775_3450",
+                  "code": "21066"
+                }
+              },
+              "offset": 60
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:44:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Apple",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.464625,
+                    "lng": -79.899028
+                  },
+                  "id": "5775_9415",
+                  "code": "8803"
+                }
+              },
+              "offset": 65
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:45:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Arbor",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.465964,
+                    "lng": -79.897843
+                  },
+                  "id": "5775_1762",
+                  "code": "8804"
+                }
+              },
+              "offset": 71
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T12:46:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Vassar",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.467895,
+                    "lng": -79.896891
+                  },
+                  "id": "5775_1759",
+                  "code": "8805"
+                }
+              },
+              "offset": 76
+            }
+          ],
+          "agency": {
+            "id": "5775_6b86b27",
+            "name": "Pittsburgh Regional Transit",
+            "website": "https://www.rideprt.org"
+          }
+        },
+        {
+          "id": "R1-S2",
+          "type": "pedestrian",
+          "actions": [
+            {
+              "action": "depart",
+              "duration": 24,
+              "instruction": "Head northeast on Lincoln Ave. Go for 49 ft.",
+              "length": 15,
+              "offset": 0
+            },
+            {
+              "action": "turn",
+              "duration": 515,
+              "instruction": "Turn left onto Lemington Ave. Go for 0.3 mi.",
+              "length": 511,
+              "offset": 1,
+              "direction": "left",
+              "severity": "quite"
+            },
+            {
+              "action": "turn",
+              "duration": 481,
+              "instruction": "Turn left onto Lemington Ave. Go for 0.3 mi.",
+              "length": 475,
+              "offset": 11,
+              "direction": "left",
+              "severity": "quite"
+            },
+            {
+              "action": "turn",
+              "duration": 78,
+              "instruction": "Turn left onto Highland Dr. Go for 256 ft.",
+              "length": 78,
+              "offset": 22,
+              "direction": "left",
+              "severity": "quite"
+            },
+            {
+              "action": "arrive",
+              "duration": 0,
+              "instruction": "Arrive at Highland Dr.",
+              "length": 0,
+              "offset": 23
+            }
+          ],
+          "travelSummary": {
+            "duration": 720,
+            "length": 1079
+          },
+          "departure": {
+            "time": "2025-12-14T12:47:00-05:00",
+            "place": {
+              "name": "Lincoln Ave + Lemington",
+              "type": "station",
+              "location": {
+                "lat": 40.468661,
+                "lng": -79.896124
+              },
+              "id": "5775_1744",
+              "code": "8806"
+            }
+          },
+          "arrival": {
+            "time": "2025-12-14T12:59:00-05:00",
+            "place": {
+              "type": "place",
+              "location": {
+                "lat": 40.474045,
+                "lng": -79.905302
+              }
+            }
+          },
+          "polyline": "BGqtgmtC_lvs4EuFkIkIjIkNvMkhBzZ8anVkDvCsdrYwMrJsnB7f8V3S03BrsB4DnL0KnkBsJ_xB4DnxCoB3NwC3N4D3N0e_0CoG7LsE_EsE7BwEj5B",
+          "transport": {
+            "mode": "pedestrian"
+          }
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "sections": [
+        {
+          "id": "R2-S0",
+          "type": "pedestrian",
+          "actions": [
+            {
+              "action": "depart",
+              "duration": 746,
+              "instruction": "Head northwest on Shady Ave. Go for 0.5 mi.",
+              "length": 735,
+              "offset": 0
+            },
+            {
+              "action": "turn",
+              "duration": 78,
+              "instruction": "Turn right onto Penn Ave. Go for 256 ft.",
+              "length": 78,
+              "offset": 24,
+              "direction": "right",
+              "severity": "quite"
+            },
+            {
+              "action": "arrive",
+              "duration": 0,
+              "instruction": "Arrive at Penn Ave. Your destination is on the right.",
+              "length": 0,
+              "offset": 27
+            }
+          ],
+          "travelSummary": {
+            "duration": 540,
+            "length": 814
+          },
+          "departure": {
+            "time": "2025-12-14T13:20:00-05:00",
+            "place": {
+              "type": "place",
+              "location": {
+                "lat": 40.453953,
+                "lng": -79.921356
+              }
+            }
+          },
+          "arrival": {
+            "time": "2025-12-14T13:29:00-05:00",
+            "place": {
+              "name": "Penn Ave + Shady Ave FS (Giant Eagle)",
+              "type": "station",
+              "location": {
+                "lat": 40.459236,
+                "lng": -79.920097
+              },
+              "id": "5775_2343",
+              "code": "8276"
+            }
+          },
+          "polyline": "BG6zjltCvtgu4E2jB_V4wB_dsTvMkNjI0F7BsEAoGAwM8B0K8BsO8BwHoBgKoB8GoBkIoBo4BwH8GoBkNwCsdgFgKkDsEwCgF0FoQwgBoG4NwMof3SwbrEoGpG2I",
+          "transport": {
+            "mode": "pedestrian"
+          }
+        },
+        {
+          "id": "R2-S1",
+          "type": "transit",
+          "travelSummary": {
+            "duration": 660,
+            "length": 2891
+          },
+          "departure": {
+            "time": "2025-12-14T13:29:00-05:00",
+            "place": {
+              "name": "Penn Ave + Shady Ave FS (Giant Eagle)",
+              "type": "station",
+              "location": {
+                "lat": 40.459236,
+                "lng": -79.920097
+              },
+              "id": "5775_2343",
+              "code": "8276"
+            }
+          },
+          "arrival": {
+            "time": "2025-12-14T13:40:00-05:00",
+            "place": {
+              "name": "Lincoln Ave + Lemington",
+              "type": "station",
+              "location": {
+                "lat": 40.468661,
+                "lng": -79.896124
+              },
+              "id": "5775_1744",
+              "code": "8806"
+            }
+          },
+          "polyline": "BHwur2jYzsrr0vBgP8Q_qCoqD3rB42D3iNo-SzZjhB0ZkhB34R4yZ49Cg9Do5Iw4Jnf8Vof7Vg-KwiF4jUo9L7GgU8G_TgyBofgyBgyB4vEo4B49C4SwwDAooEvgBo-D_dwlBg-KvwDokL_uFg0PwM46G4rBglKzeoG0enGg9Dwwc3S8B4S7Bw3CwrSwwDgwMrT4IsT3I4SgyBglKgsiBjXgKkX_JouGopVwiFglKzPoL0PnLg_Rw_hBwlBgrC_OwRgPvR49Cw7FgyBwiFw3CokLvW8LwW7Lw0GwsZzUsJ0UrJoGgyBwwDgwMwlBwiFnVwHoVvHwMwlB4zHojdw3Cg-K7VwH8VvHwMw-B4oFo1FovNgwMouGw3C3D8Q4D7Qw2Ug6HoqDgyB47Nw_IrJsYsJrYg6HwiF4kCw-B4oFogIjSwW",
+          "transport": {
+            "mode": "bus",
+            "name": "82",
+            "category": "Bus",
+            "color": "#ffffff",
+            "textColor": "#000000",
+            "headsign": "LINCOLN VIA CENTRE AVENUE",
+            "shortName": "82",
+            "longName": "LINCOLN"
+          },
+          "intermediateStops": [
+            {
+              "departure": {
+                "time": "2025-12-14T13:30:00-05:00",
+                "place": {
+                  "name": "Penn Ave + Village OF Eastside Shopping Center",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.458359,
+                    "lng": -79.918793
+                  },
+                  "id": "5775_2278",
+                  "code": "8277"
+                }
+              },
+              "offset": 5
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:30:00-05:00",
+                "place": {
+                  "name": "East Liberty Blvd + Dahlem Pl",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.45804,
+                    "lng": -79.916695
+                  },
+                  "id": "5775_768",
+                  "code": "8541"
+                }
+              },
+              "offset": 10
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:31:00-05:00",
+                "place": {
+                  "name": "East Liberty Blvd + Hamilton Ave",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.459669,
+                    "lng": -79.915828
+                  },
+                  "id": "5775_770",
+                  "code": "8542"
+                }
+              },
+              "offset": 14
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:32:00-05:00",
+                "place": {
+                  "name": "East Liberty Blvd + Frankstown Ave",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.460617,
+                    "lng": -79.915665
+                  },
+                  "id": "5775_769",
+                  "code": "8543"
+                }
+              },
+              "offset": 21
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:33:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave at Frankstown Ave FS",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.460461,
+                    "lng": -79.9129
+                  },
+                  "id": "5775_12036",
+                  "code": "22672"
+                }
+              },
+              "offset": 28
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:33:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Mayflower St (#408)",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.46068,
+                    "lng": -79.911447
+                  },
+                  "id": "5775_1753",
+                  "code": "8795"
+                }
+              },
+              "offset": 31
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:34:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Meadow",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.460999,
+                    "lng": -79.909856
+                  },
+                  "id": "5775_1748",
+                  "code": "8796"
+                }
+              },
+              "offset": 35
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:34:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Shetland",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.461543,
+                    "lng": -79.908014
+                  },
+                  "id": "5775_1758",
+                  "code": "8797"
+                }
+              },
+              "offset": 39
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:35:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Renfrew",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.462145,
+                    "lng": -79.906402
+                  },
+                  "id": "5775_1769",
+                  "code": "8798"
+                }
+              },
+              "offset": 43
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:36:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Atwell",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.463126,
+                    "lng": -79.904532
+                  },
+                  "id": "5775_1737",
+                  "code": "8799"
+                }
+              },
+              "offset": 47
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:36:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Lyric St",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.463484,
+                    "lng": -79.903411
+                  },
+                  "id": "5775_11711",
+                  "code": "21720"
+                }
+              },
+              "offset": 52
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:37:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Upland",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.463827,
+                    "lng": -79.902115
+                  },
+                  "id": "5775_1751",
+                  "code": "8801"
+                }
+              },
+              "offset": 55
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:37:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Deary St",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.464076,
+                    "lng": -79.901138
+                  },
+                  "id": "5775_3450",
+                  "code": "21066"
+                }
+              },
+              "offset": 60
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:38:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Apple",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.464625,
+                    "lng": -79.899028
+                  },
+                  "id": "5775_9415",
+                  "code": "8803"
+                }
+              },
+              "offset": 65
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:38:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Arbor",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.465964,
+                    "lng": -79.897843
+                  },
+                  "id": "5775_1762",
+                  "code": "8804"
+                }
+              },
+              "offset": 71
+            },
+            {
+              "departure": {
+                "time": "2025-12-14T13:39:00-05:00",
+                "place": {
+                  "name": "Lincoln Ave + Vassar",
+                  "type": "station",
+                  "location": {
+                    "lat": 40.467895,
+                    "lng": -79.896891
+                  },
+                  "id": "5775_1759",
+                  "code": "8805"
+                }
+              },
+              "offset": 76
+            }
+          ],
+          "agency": {
+            "id": "5775_6b86b27",
+            "name": "Pittsburgh Regional Transit",
+            "website": "https://www.rideprt.org"
+          }
+        },
+        {
+          "id": "R2-S2",
+          "type": "pedestrian",
+          "actions": [
+            {
+              "action": "depart",
+              "duration": 24,
+              "instruction": "Head northeast on Lincoln Ave. Go for 49 ft.",
+              "length": 15,
+              "offset": 0
+            },
+            {
+              "action": "turn",
+              "duration": 515,
+              "instruction": "Turn left onto Lemington Ave. Go for 0.3 mi.",
+              "length": 511,
+              "offset": 1,
+              "direction": "left",
+              "severity": "quite"
+            },
+            {
+              "action": "turn",
+              "duration": 481,
+              "instruction": "Turn left onto Lemington Ave. Go for 0.3 mi.",
+              "length": 475,
+              "offset": 11,
+              "direction": "left",
+              "severity": "quite"
+            },
+            {
+              "action": "turn",
+              "duration": 78,
+              "instruction": "Turn left onto Highland Dr. Go for 256 ft.",
+              "length": 78,
+              "offset": 22,
+              "direction": "left",
+              "severity": "quite"
+            },
+            {
+              "action": "arrive",
+              "duration": 0,
+              "instruction": "Arrive at Highland Dr.",
+              "length": 0,
+              "offset": 23
+            }
+          ],
+          "travelSummary": {
+            "duration": 720,
+            "length": 1079
+          },
+          "departure": {
+            "time": "2025-12-14T13:40:00-05:00",
+            "place": {
+              "name": "Lincoln Ave + Lemington",
+              "type": "station",
+              "location": {
+                "lat": 40.468661,
+                "lng": -79.896124
+              },
+              "id": "5775_1744",
+              "code": "8806"
+            }
+          },
+          "arrival": {
+            "time": "2025-12-14T13:52:00-05:00",
+            "place": {
+              "type": "place",
+              "location": {
+                "lat": 40.474045,
+                "lng": -79.905302
+              }
+            }
+          },
+          "polyline": "BGqtgmtC_lvs4EuFkIkIjIkNvMkhBzZ8anVkDvCsdrYwMrJsnB7f8V3S03BrsB4DnL0KnkBsJ_xB4DnxCoB3NwC3N4D3N0e_0CoG7LsE_EsE7BwEj5B",
+          "transport": {
+            "mode": "pedestrian"
+          }
+        }
+      ]
+    }
+  ]
+}

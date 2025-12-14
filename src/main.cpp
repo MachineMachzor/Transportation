@@ -19,6 +19,8 @@
 #include <regex>
 #include <time.h>
 #include <ctype.h>
+#include <cmath>
+
 
 
 
@@ -170,6 +172,11 @@ const String  HOME_PAGE_END_SELECTED_ID = "t6"; //Selected end location
 
 static constexpr float KM_TO_MILES = 0.621371f;
 static constexpr float FT_PER_MILE = 5280.0f;
+
+double round1(double x) {
+  return std::round(x * 10.0) / 10.0;
+}
+
 
 // Extract the first numeric token (handles optional leading sign and decimal).
 // Returns true and sets outVal if a number was found.
@@ -327,22 +334,29 @@ struct BoardingInfo {
   bool valid = false;
 };
 
-// Helper: extract HH:MM from an ISO timestamp like "2025-12-13T13:33:00-05:00"
+// Helper: extract HH:MM from an ISO timestamp like "2025-12-13T13:33:00-05:00" --> This gets turned into 13:33
 static String isoToHHMM(const String &iso) {
   if (iso.length() < 16) return iso;
   return iso.substring(11, 16);
 }
 
 // Heuristic: convert length to miles string (assume >1000 = meters, else feet)
+// --> Bad method
 static String lengthToMilesString(double len) {
   if (len <= 0) return "";
   double miles;
-  if (len > 1000.0) { // assume meters
-    miles = len / 1609.344;
-  } else { // assume feet
-    miles = len / 5280.0;
-  }
-  return String(miles, 2) + " mi";
+  // if (len > 1000.0) { // assume meters
+  //   miles = len / 1609.344;
+  // } else { // assume feet
+  //   miles = len / 5280.0;
+  // }
+  // Always assume meters
+  miles = len / 1609.344;
+  // Round to 1 decimal
+  // miles = round(miles * 100.0) / 100.0;
+  miles = round1(miles);
+  // return String(miles, 2) + " mi";
+  return String(miles) + " mi";
 }
 
 String extractJsonPart(const String &raw) {
@@ -375,49 +389,49 @@ size_t parseAllFirstBoardingInfos(const String &jsonPart, std::vector<BoardingIn
     return 0;
   }
 
-  JsonVariant root = doc.as<JsonVariant>();
-  if (!root.is<JsonObject>()) return 0;
+  JsonVariant root = doc.as<JsonVariant>(); //A variant view can deal with any object, just points to the document to read
+  if (!root.is<JsonObject>()) return 0; //Ensures JSON object
   JsonObject rootObj = root.as<JsonObject>();
 
-  if (!rootObj.containsKey("routes")) return 0;
+  if (!rootObj.containsKey("routes")) return 0; //Should have routes
   JsonVariant routesVar = rootObj["routes"];
   if (!routesVar.is<JsonArray>()) return 0;
-  JsonArray routes = routesVar.as<JsonArray>();
+  JsonArray routes = routesVar.as<JsonArray>(); //Iteration
 
   for (JsonVariant rVar : routes) {
     if (!rVar.is<JsonObject>()) continue;
     JsonObject route = rVar.as<JsonObject>();
 
     if (!route.containsKey("sections")) continue;
-    JsonVariant sectionsVar = route["sections"];
-    if (!sectionsVar.is<JsonArray>()) continue;
+    JsonVariant sectionsVar = route["sections"]; //Ensure it as sections
+    if (!sectionsVar.is<JsonArray>()) continue; //Make it a JSON Array for iteration
     JsonArray sections = sectionsVar.as<JsonArray>();
 
     // Track the most recent pedestrian section seen before a transit section
     JsonObject prevPedSection; // empty if none
     bool found = false;
-    for (JsonVariant sVar : sections) {
-      if (!sVar.is<JsonObject>()) continue;
+    for (JsonVariant sVar : sections) { //ex: Three individual routes to take, like 3 dropdown options
+      if (!sVar.is<JsonObject>()) continue; //Skip non objects
       JsonObject section = sVar.as<JsonObject>();
-      const char *type = section["type"] | "";
+      const char *type = section["type"] | ""; //Read the type, if missing it is an empty string
 
       if (strcmp(type, "pedestrian") == 0) {
-        prevPedSection = section;
+        prevPedSection = section; //If it's a pedestian, store it and continue to the next section
         continue;
       }
 
       if (strcmp(type, "transit") == 0) {
         BoardingInfo bi;
         // bus label: prefer shortName, then shortName in transport, then name, then longName
-        if (section.containsKey("transport")) {
-          JsonObject transport = section["transport"].as<JsonObject>();
-          if (transport.containsKey("shortName")) bi.busLabel = String(transport["shortName"].as<const char*>());
+        if (section.containsKey("transport")) { //Look for transport within transit
+          JsonObject transport = section["transport"].as<JsonObject>(); //Make it an object to access the properties
+          if (transport.containsKey("shortName")) bi.busLabel = String(transport["shortName"].as<const char*>()); //74, P1...
           else if (transport.containsKey("name")) bi.busLabel = String(transport["name"].as<const char*>());
           else if (transport.containsKey("longName")) bi.busLabel = String(transport["longName"].as<const char*>());
         }
 
         // station name: section.departure.place.name
-        if (section.containsKey("departure")) {
+        if (section.containsKey("departure")) { //Look within the departure section
           JsonObject departure = section["departure"].as<JsonObject>();
           if (departure.containsKey("place")) {
             JsonObject place = departure["place"].as<JsonObject>();
@@ -429,19 +443,19 @@ size_t parseAllFirstBoardingInfos(const String &jsonPart, std::vector<BoardingIn
         }
 
         // fallback for nextBusTime: first intermediateStops departure.time
-        if (bi.nextBusTime.length() == 0 && section.containsKey("intermediateStops")) {
-          JsonVariant stopsVar = section["intermediateStops"];
-          if (stopsVar.is<JsonArray>()) {
-            JsonArray stops = stopsVar.as<JsonArray>();
-            if (stops.size() > 0) {
-              JsonObject firstStop = stops[0].as<JsonObject>();
-              if (firstStop.containsKey("departure")) {
-                JsonObject d = firstStop["departure"].as<JsonObject>();
-                if (d.containsKey("time")) bi.nextBusTime = isoToHHMM(String(d["time"].as<const char*>()));
-              }
-            }
-          }
-        }
+        // if (bi.nextBusTime.length() == 0 && section.containsKey("intermediateStops")) {
+        //   JsonVariant stopsVar = section["intermediateStops"];
+        //   if (stopsVar.is<JsonArray>()) {
+        //     JsonArray stops = stopsVar.as<JsonArray>();
+        //     if (stops.size() > 0) {
+        //       JsonObject firstStop = stops[0].as<JsonObject>();
+        //       if (firstStop.containsKey("departure")) {
+        //         JsonObject d = firstStop["departure"].as<JsonObject>();
+        //         if (d.containsKey("time")) bi.nextBusTime = isoToHHMM(String(d["time"].as<const char*>()));
+        //       }
+        //     }
+        //   }
+        // }
 
         // walkDistance and walkTime from prevPedSection.travelSummary if available
         if (!prevPedSection.isNull() && prevPedSection.containsKey("travelSummary")) {
@@ -455,31 +469,42 @@ size_t parseAllFirstBoardingInfos(const String &jsonPart, std::vector<BoardingIn
             int minutes = (durSec + 30) / 60;
             bi.walkTime = String(minutes) + " min";
           }
-        } else {
-          // fallback: try prevPedSection.actions[0].instruction crude parse
-          if (!prevPedSection.isNull() && prevPedSection.containsKey("actions")) {
-            JsonVariant actionsVar = prevPedSection["actions"];
-            if (actionsVar.is<JsonArray>()) {
-              JsonArray actions = actionsVar.as<JsonArray>();
-              if (actions.size() > 0) {
-                JsonObject a0 = actions[0].as<JsonObject>();
-                if (a0.containsKey("instruction")) {
-                  String instr = String(a0["instruction"].as<const char*>());
-                  int pos = instr.indexOf("Go for");
-                  if (pos >= 0) {
-                    String tail = instr.substring(pos);
-                    int dot = tail.indexOf('.');
-                    if (dot > 0) tail = tail.substring(0, dot);
-                    bi.walkDistance = tail; // e.g., "Go for 0.5 mi"
-                  }
-                }
-              }
-            }
-          }
-        }
+        } 
+        // else {
+        //   // fallback: try prevPedSection.actions[0].instruction crude parse
+        //   if (!prevPedSection.isNull() && prevPedSection.containsKey("actions")) {
+        //     JsonVariant actionsVar = prevPedSection["actions"];
+        //     if (actionsVar.is<JsonArray>()) {
+        //       JsonArray actions = actionsVar.as<JsonArray>();
+        //       if (actions.size() > 0) {
+        //         JsonObject a0 = actions[0].as<JsonObject>();
+        //         if (a0.containsKey("instruction")) {
+        //           String instr = String(a0["instruction"].as<const char*>());
+        //           int pos = instr.indexOf("Go for");
+        //           if (pos >= 0) {
+        //             String tail = instr.substring(pos);
+        //             int dot = tail.indexOf('.');
+        //             if (dot > 0) tail = tail.substring(0, dot);
+        //             bi.walkDistance = tail; // e.g., "Go for 0.5 mi"
+        //           }
+        //         }
+        //       }
+        //     }
+        //   }
+        // }
 
         bi.valid = true;
-        outInfos.push_back(bi);
+        bool foundBusBefore = false;
+        for (const BoardingInfo &existingBi : outInfos) {
+          if (existingBi.busLabel == bi.busLabel) {
+            foundBusBefore = true;
+            break;
+          }
+        }
+        if (!foundBusBefore) {
+          outInfos.push_back(bi);
+        }
+        // outInfos.push_back(bi);
         found = true;
         break; // only the first transit section per route
       }
@@ -494,14 +519,13 @@ size_t parseAllFirstBoardingInfos(const String &jsonPart, std::vector<BoardingIn
 
 
 
-String httpGetDirections(String origin_lat, String origin_lon, String dest_lat, String dest_lon, String apiKey = "t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU") {
+String httpGetDirections(String origin_lat, String origin_lon, String dest_lat, String dest_lon, bool verbose=false, String apiKey = "t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU") {
   WiFiClientSecure *client = new WiFiClientSecure();
   client->setInsecure(); // for testing only
   HTTPClient https;
 
 
   // std::vector<BoardingInfo> n = getDirections("434 Fifth Avenue, Pittsburgh, PA", "Highland Park, Pittsburgh, PA 15206", c.lat, c.lon, true);
-  // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQWphb0V0Zi1tNUdjTWY0RzN0R1ZRNEMlM0FDZ2dJQkNEa3pxSEpBeEFCR2dNME16UTtsYXQ9NDAuNDM5Njk7bG9uPS03OS45OTgwNztuPTQzNCUyMDV0aCUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjE5LTE3MDQlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9/s-Yz01NTAtNTUyMC0wMDAwO2lkPWhlcmUlM0FwZHMlM0FwbGFjZSUzQTg0MGRwcG41LWIzZWU0MGUyODVjZjExMGZiODU5NDMwZWYzZmQ4ZjdkO2xhdD00MC40NTA4Nztsb249LTc5Ljg5NTY2O249QXNjZW5kJTIwUG9pbnQlMjBCcmVlemU7cGg9?map=40.45008,-79.94687,13.01
   // Found cool method to reverse-engineer (it's the routes endpoint, apikey might change or something so be wary)
   // String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU&destination=40.492322%2C-79.901944&lang=en-US&origin=40.43969%2C-79.99807&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
   String url = "https://intermodal.router.hereapi.com/v8/routes?alternatives=2&apiKey=" + apiKey + "&destination=" + dest_lat + "%2C" + dest_lon + "&lang=en-US&origin=" + origin_lat + "%2C" + origin_lon + "&pedestrian%5Bspeed%5D=1.5&rented%5Benable%5D=&rented%5Bmodes%5D=&return=actions%2Cintermediate%2Cpolyline%2Cfares%2CbookingLinks%2CtravelSummary%2Cincidents&taxi%5Benable%5D=&taxi%5Bmodes%5D=&units=imperial&vehicle%5Bmodes%5D=&via=place%3AparkingLot%3Bstrategy%3DdiverseChoices";
@@ -536,6 +560,11 @@ String httpGetDirections(String origin_lat, String origin_lon, String dest_lat, 
     dbgSerial->printf("HTTP GET failed, code: %d, err: %s\n", httpCode, https.errorToString(httpCode).c_str());
   }
   logMessage("Directions Response length: " + String(result.length()));
+
+  if (verbose) {
+    dbgSerial->println("Full Directions Response:");
+    dbgSerial->println(result);
+  }
 
   std::vector<BoardingInfo> infos;
   size_t count = parseAllFirstBoardingInfos(result, infos);
@@ -2727,14 +2756,20 @@ void setup() {
   // logMessage("Test compute walktime of 10 min for 0.5 miles with new miles of 1.2: " + String(newWalkTime(10, 0.5, 1.2)) + " min");
   
 
-  
+  // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQWphb0V0Zi1tNUdjTWY0RzN0R1ZRNEMlM0FDZ2dJQkNEa3pxSEpBeEFCR2dNME16UTtsYXQ9NDAuNDM5Njk7bG9uPS03OS45OTgwNztuPTQzNCUyMDV0aCUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjE5LTE3MDQlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0JTNBMHRxZW1ibDNhMVptUmNmeVNBT0V2QTtsYXQ9NDAuNDc3Mzk7bG9uPS03OS45MDI4ODtuPUxlZWNoJTIwRmFybSUyMFJkJTJDJTIwUGl0dHNidXJnaCUyQyUyMFBBJTIwMTUyMDYlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45893,-79.94588,13.68
+  // String origin_test_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+  // String origin_test_lon = "-79.921356";
+  // String dest_test_lat = "40.474045"; //Leech Farm Rd, Pittsburgh, PA 15206, United States
+  // String dest_test_lon = "-79.905302";
+
+
+  // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
   String origin_test_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
   String origin_test_lon = "-79.921356";
-  String dest_test_lat = "40.474045"; //Leech Farm Rd, Pittsburgh, PA 15206, United States
-  String dest_test_lon = "-79.905302";
+  String dest_test_lat = "40.442115"; //Two PNC Plaza
+  String dest_test_lon = "-80.000915";
 
-  
-  String body = httpGetDirections(origin_test_lat, origin_test_lon, dest_test_lat, dest_test_lon);
+  String body = httpGetDirections(origin_test_lat, origin_test_lon, dest_test_lat, dest_test_lon, true);
   // Serial.println(body);
 
   // int PLACE_MAX = 3;
