@@ -517,6 +517,69 @@ size_t parseAllFirstBoardingInfos(const String &jsonPart, std::vector<BoardingIn
   return outInfos.size();
 }
 
+
+
+size_t parseAllAddresses(const String &jsonPart, std::vector<placeIdentifier> &outInfos, size_t capacity = 200000) {
+  outInfos.clear();
+  if (jsonPart.length() == 0) return 0;
+
+  DynamicJsonDocument doc(capacity);
+  DeserializationError err = deserializeJson(doc, extractJsonPart(jsonPart));
+  if (err) {
+    Serial.print("JSON parse failed: ");
+    Serial.println(err.c_str());
+    return 0;
+  }
+
+  JsonVariant root = doc.as<JsonVariant>(); //A variant view can deal with any object, just points to the document to read
+  if (!root.is<JsonObject>()) return -3; //Ensures JSON object
+  JsonObject rootObj = root.as<JsonObject>();
+
+  if (!rootObj.containsKey("items")) return -2; //Should have routes
+  JsonVariant itemsVar = rootObj["items"];
+  if (!itemsVar.is<JsonArray>()) return -1;
+  JsonArray items = itemsVar.as<JsonArray>(); //Iteration
+
+  for (JsonVariant iVar : items) {
+    placeIdentifier pi;
+    if (!iVar.is<JsonObject>()) continue;
+    JsonObject item = iVar.as<JsonObject>();
+
+    if (!item.containsKey("position")) continue;
+    JsonVariant positionVar = item["position"]; //Ensure it as sections
+    if (!positionVar.is<JsonObject>()) continue; //Make it a JSON Array for iteration
+    JsonObject position = positionVar.as<JsonObject>();
+    
+
+
+
+    // Track the most recent pedestrian section seen before a transit section
+
+    
+
+    if (position.containsKey("lat") && position.containsKey("lng")) { //Look for transport within transit
+        pi.lat = position["lat"].as<float>();
+        pi.lon = position["lng"].as<float>();
+    }
+  
+
+    if (item.containsKey("title")) {
+      pi.place = String(item["title"].as<const char*>());
+    }
+
+    outInfos.push_back(pi);
+
+     
+      
+  } // end sections loop
+
+    // If route had no transit section, optionally push an invalid entry or skip (we skip)
+   // end routes loop
+
+  return outInfos.size();
+}
+
+
 // SearchQuery: 43 4 g,  (%20 is space and %2 is comma)
 // https://autosuggest.search.hereapi.com/v1/autosuggest?xnlp=CL_JSMv3.2.0.0&apikey=t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU&at=40.44865%2C-79.96352&lang=en-US&limit=5&q=43%204%20g%2C
 
@@ -1945,30 +2008,31 @@ std::vector<placeIdentifier> getPlaces(String searchQuery, Place places[], int m
   }
   
   std::vector<String> placeRetStrings;
+
   std::vector<placeIdentifier> placeIdentifiers;
+  size_t count = parseAllAddresses(body, placeIdentifiers);
+  count = min((size_t)count, (size_t)maxPlaces);
+  std::vector<placeIdentifier> placeIdentifiers_ = std::vector<placeIdentifier>(count);
 
-  return placeIdentifiers;
-  
-  int count = parsePlacesFromBody(body, places, MAX_RESULTS);
 
-  dbgSerial->printf("Found %d places:\n", count);
-  for (int i = 0; i < count; ++i) {
-    placeIdentifier pid;
-    pid.place = places[i].name;
-    pid.lat = places[i].lat;
-    pid.lon = places[i].lon;
-    // dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
-    placeRetStrings.push_back(places[i].name.c_str());
-    if (verbose) {
-      dbgSerial->printf("%s ", places[i].name.c_str());
-      dbgSerial->printf("%f, ", places[i].lat);
-      dbgSerial->printf("%f\n", places[i].lon);
+
+  logMessage("Found places: " + String(count));
+  if (verbose) {
+    for(size_t i = 0; i < count; ++i) {
+      placeIdentifier p = placeIdentifiers[i];
+      logMessage(p.place + " | " + String(p.lat, 6) + ", " + String(p.lon, 6));
     }
-    placeIdentifiers.push_back(pid);
   }
+
+  
+
+
+  
+  
+ 
   https.end();
   delete client;
-  return placeIdentifiers;
+  return placeIdentifiers_;
 }
 
 BoardingInfo infos[MAX_RESULTS];
@@ -2867,7 +2931,7 @@ void setup() {
   // getPlaces
 
   int PLACE_MAX = 3;
-  std::vector<placeIdentifier> placesDebug = getPlaces("434", placesStart, PLACE_MAX, c.lat, c.lon, true);
+  std::vector<placeIdentifier> placesDebug = getPlaces("434 Shady", placesStart, PLACE_MAX, c.lat, c.lon, true);
 
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);

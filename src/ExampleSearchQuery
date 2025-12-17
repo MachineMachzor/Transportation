@@ -1,0 +1,255 @@
+{
+  "items": [
+    {
+      "title": "434 Shady Ave, Pittsburgh, PA 15206-4455, United States",
+      "id": "here:af:streetsection:-7syXQzFrkgRC3rQ-OO7sC:CgcIBCDHlqIgEAEaAzQzNA",
+      "resultType": "houseNumber",
+      "houseNumberType": "PA",
+      "address": {
+        "label": "434 Shady Ave, Pittsburgh, PA 15206-4455, United States"
+      },
+      "position": {
+        "lat": 40.45459,
+        "lng": -79.92213
+      },
+      "access": [
+        {
+          "lat": 40.4547,
+          "lng": -79.92183
+        }
+      ],
+      "distance": 6786,
+      "mapView": {
+        "west": -79.92256,
+        "south": 40.45289,
+        "east": -79.92071,
+        "north": 40.45976
+      },
+      "highlights": {
+        "title": [
+          {
+            "start": 0,
+            "end": 3
+          },
+          {
+            "start": 4,
+            "end": 9
+          }
+        ],
+        "address": {
+          "label": [
+            {
+              "start": 0,
+              "end": 3
+            },
+            {
+              "start": 4,
+              "end": 9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "title": "434 Shady Ave, Bridgeville, PA 15017-1962, United States",
+      "id": "here:af:streetsection:-ow3mX6jq1PS6DdMWXhdgC:CgcIBCD5_6kfEAEaAzQzNA",
+      "resultType": "houseNumber",
+      "houseNumberType": "PA",
+      "address": {
+        "label": "434 Shady Ave, Bridgeville, PA 15017-1962, United States"
+      },
+      "position": {
+        "lat": 40.35981,
+        "lng": -80.11312
+      },
+      "access": [
+        {
+          "lat": 40.35974,
+          "lng": -80.11287
+        }
+      ],
+      "distance": 13087,
+      "mapView": {
+        "west": -80.11327,
+        "south": 40.35877,
+        "east": -80.11256,
+        "north": 40.36048
+      },
+      "highlights": {
+        "title": [
+          {
+            "start": 0,
+            "end": 3
+          },
+          {
+            "start": 4,
+            "end": 9
+          }
+        ],
+        "address": {
+          "label": [
+            {
+              "start": 0,
+              "end": 3
+            },
+            {
+              "start": 4,
+              "end": 9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "title": "434 Shady Ln, New Castle, PA 16105-1572, United States",
+      "id": "here:af:streetsection:wkgedUnqWmPcZeIx0sFVjD:CgcIBCCW6MA1EAEaAzQzNA",
+      "resultType": "houseNumber",
+      "houseNumberType": "PA",
+      "address": {
+        "label": "434 Shady Ln, New Castle, PA 16105-1572, United States"
+      },
+      "position": {
+        "lat": 41.03775,
+        "lng": -80.3388
+      },
+      "access": [
+        {
+          "lat": 41.03798,
+          "lng": -80.33885
+        }
+      ],
+      "distance": 72337,
+      "mapView": {
+        "west": -80.34063,
+        "south": 41.03786,
+        "east": -80.33818,
+        "north": 41.03807
+      },
+      "highlights": {
+        "title": [
+          {
+            "start": 0,
+            "end": 3
+          },
+          {
+            "start": 4,
+            "end": 9
+          }
+        ],
+        "address": {
+          "label": [
+            {
+              "start": 0,
+              "end": 3
+            },
+            {
+              "start": 4,
+              "end": 9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "title": "434 Shadyhill Rd, Pittsburgh, PA 15205-3913, United States",
+      "id": "here:af:streetsection:9A1XFTYUpfEg6zrW-gLG7D:EAIaAzQzNA",
+      "resultType": "houseNumber",
+      "houseNumberType": "interpolated",
+      "address": {
+        "label": "434 Shadyhill Rd, Pittsburgh, PA 15205-3913, United States"
+      },
+      "position": {
+        "lat": 40.43246,
+        "lng": -80.04883
+      },
+      "access": [
+        {
+          "lat": 40.43234,
+          "lng": -80.04876
+        }
+      ],
+      "distance": 4217,
+      "mapView": {
+        "west": -80.05013,
+        "south": 40.43186,
+        "east": -80.04776,
+        "north": 40.43565
+      },
+      "highlights": {
+        "title": [
+          {
+            "start": 0,
+            "end": 3
+          },
+          {
+            "start": 4,
+            "end": 9
+          }
+        ],
+        "address": {
+          "label": [
+            {
+              "start": 0,
+              "end": 3
+            },
+            {
+              "start": 4,
+              "end": 9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "title": "434 Shady Ridge Dr, Monroeville, PA 15146-4580, United States",
+      "id": "here:af:streetsection:6X-FkH6b6DcW7spdbeSWWA:EAIaAzQzNA",
+      "resultType": "houseNumber",
+      "houseNumberType": "interpolated",
+      "address": {
+        "label": "434 Shady Ridge Dr, Monroeville, PA 15146-4580, United States"
+      },
+      "position": {
+        "lat": 40.40983,
+        "lng": -79.80619
+      },
+      "access": [
+        {
+          "lat": 40.4099,
+          "lng": -79.80634
+        }
+      ],
+      "distance": 16745,
+      "mapView": {
+        "west": -79.80691,
+        "south": 40.40784,
+        "east": -79.80251,
+        "north": 40.41015
+      },
+      "highlights": {
+        "title": [
+          {
+            "start": 0,
+            "end": 3
+          },
+          {
+            "start": 4,
+            "end": 9
+          }
+        ],
+        "address": {
+          "label": [
+            {
+              "start": 0,
+              "end": 3
+            },
+            {
+              "start": 4,
+              "end": 9
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "queryTerms": []
+}
