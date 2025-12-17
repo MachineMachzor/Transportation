@@ -532,12 +532,12 @@ size_t parseAllAddresses(const String &jsonPart, std::vector<placeIdentifier> &o
   }
 
   JsonVariant root = doc.as<JsonVariant>(); //A variant view can deal with any object, just points to the document to read
-  if (!root.is<JsonObject>()) return -3; //Ensures JSON object
+  if (!root.is<JsonObject>()) return 0; //Ensures JSON object
   JsonObject rootObj = root.as<JsonObject>();
 
-  if (!rootObj.containsKey("items")) return -2; //Should have routes
+  if (!rootObj.containsKey("items")) return 0; //Should have routes
   JsonVariant itemsVar = rootObj["items"];
-  if (!itemsVar.is<JsonArray>()) return -1;
+  if (!itemsVar.is<JsonArray>()) return 0;
   JsonArray items = itemsVar.as<JsonArray>(); //Iteration
 
   for (JsonVariant iVar : items) {
@@ -2011,10 +2011,6 @@ std::vector<placeIdentifier> getPlaces(String searchQuery, Place places[], int m
 
   std::vector<placeIdentifier> placeIdentifiers;
   size_t count = parseAllAddresses(body, placeIdentifiers);
-  count = min((size_t)count, (size_t)maxPlaces);
-  std::vector<placeIdentifier> placeIdentifiers_ = std::vector<placeIdentifier>(count);
-
-
 
   logMessage("Found places: " + String(count));
   if (verbose) {
@@ -2023,11 +2019,12 @@ std::vector<placeIdentifier> getPlaces(String searchQuery, Place places[], int m
       logMessage(p.place + " | " + String(p.lat, 6) + ", " + String(p.lon, 6));
     }
   }
+  count = min((size_t)count, (size_t)maxPlaces);
+  std::vector<placeIdentifier> placeIdentifiers_ = std::vector<placeIdentifier>(count);
 
-  
-
-
-  
+  for(size_t i = 0; i < count; ++i) {
+    placeIdentifiers_[i] = placeIdentifiers[i];
+  }  
   
  
   https.end();
@@ -2202,13 +2199,14 @@ chooseAddressStruct chooseAddress() {
     // buttonText btStart = GetStartAddress();
     sendCommand("get " + HOME_PAGE_START_TXT + ".txt");
     startText = getButtonText(*nextionSerial);
+
     
-    sendCommand("b1.txt=\"Loading\"");
-    sendCommand("b2.txt=\"Loading\"");
-    sendCommand("b3.txt=\"Loading\"");
     
     if (startText != priorStartText && startText.length() > 0) {
       logMessage("Start text: " + startText);
+      sendCommand("b1.txt=\"Loading...\"");
+      sendCommand("b2.txt=\"Loading...\"");
+      sendCommand("b3.txt=\"Loading...\"");
 
       priorStartText = startText;
       startPlacesSearch = getPlaces(startText, placesStart, PLACE_MAX, c.lat, c.lon);
@@ -2558,7 +2556,7 @@ void block_infoPage() {
   safeSetPage("InfoPage");
 
   if (minute_changed_now()) {
-    sendCommand("b0.txt=\"Loading\"");
+    sendCommand("b0.txt=\"Loading...\"");
     std::vector<String> transitList;
     std::vector<String> walkTimeList;
     std::vector<String> walkDistList;
