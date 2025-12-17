@@ -25,7 +25,7 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = false;//If false, should be production nextion
+const bool TESTING_NEXTION = true;//If false, should be production nextion
 const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one, false for production
 const bool RESET_SAVED_WIFI = true; //Set to true to reset saved wifi credentials, this should be false in production
 
@@ -38,8 +38,8 @@ const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecti
 // Set all of these to false in production to not skip the code
 const bool SKIP_WIFI_SELECTION = true;
 const bool SKIP_WIFI_LOGIN = true;
-const bool SKIP_ADDR_CHOOSE = true;
-const bool SKIP_FIRST_BUS_SELECT = true;
+const bool SKIP_ADDR_CHOOSE = false;
+const bool SKIP_FIRST_BUS_SELECT = false;
 const bool SKIP_WALKTIME_SET = true;
 const bool SKIP_INFO_PAGE = true;
 
@@ -549,7 +549,7 @@ size_t parseAllAddresses(const String &jsonPart, std::vector<placeIdentifier> &o
     JsonVariant positionVar = item["position"]; //Ensure it as sections
     if (!positionVar.is<JsonObject>()) continue; //Make it a JSON Array for iteration
     JsonObject position = positionVar.as<JsonObject>();
-    
+
 
 
 
@@ -2202,10 +2202,14 @@ chooseAddressStruct chooseAddress() {
     // buttonText btStart = GetStartAddress();
     sendCommand("get " + HOME_PAGE_START_TXT + ".txt");
     startText = getButtonText(*nextionSerial);
-
+    
+    sendCommand("b1.txt=\"Loading\"");
+    sendCommand("b2.txt=\"Loading\"");
+    sendCommand("b3.txt=\"Loading\"");
     
     if (startText != priorStartText && startText.length() > 0) {
       logMessage("Start text: " + startText);
+
       priorStartText = startText;
       startPlacesSearch = getPlaces(startText, placesStart, PLACE_MAX, c.lat, c.lon);
       // startPlacesSearch = getPlaces("new york", placesStart, PLACE_MAX, c.lat, c.lon);
@@ -2930,8 +2934,8 @@ void setup() {
   // dbgSerial->println("-----");
   // getPlaces
 
-  int PLACE_MAX = 3;
-  std::vector<placeIdentifier> placesDebug = getPlaces("434 Shady", placesStart, PLACE_MAX, c.lat, c.lon, true);
+  // int PLACE_MAX = 3;
+  // std::vector<placeIdentifier> placesDebug = getPlaces("434 Shady", placesStart, PLACE_MAX, c.lat, c.lon, true);
 
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
