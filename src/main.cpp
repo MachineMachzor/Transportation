@@ -33,15 +33,13 @@ const bool RESET_SAVED_WIFI = true; //Set to true to reset saved wifi credential
 const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecting
 #define DEBUG_MINUTES false
 
-
-
 // Set all of these to false in production to not skip the code
 const bool SKIP_WIFI_SELECTION = true;
 const bool SKIP_WIFI_LOGIN = true;
-const bool SKIP_ADDR_CHOOSE = false;
-const bool SKIP_FIRST_BUS_SELECT = false;
+const bool SKIP_ADDR_CHOOSE = true;
+const bool SKIP_FIRST_BUS_SELECT = true;
 const bool SKIP_WALKTIME_SET = true;
-const bool SKIP_INFO_PAGE = true;
+const bool SKIP_INFO_PAGE = false;
 
 // Set all of these to false in production to not reset saved settings
 const bool RESET_SAVED_ADDRS = true;
@@ -78,8 +76,8 @@ String pageTracker;
 // #include <HTTPClient.h>
 
 // For testing
-char* ssidTest     = "NETGEAR26";
-char* passwordTest = "melodicpanda708"; 
+char* ssidTest     = "Pixel_4976";
+char* passwordTest = "abcdefgh"; 
 
 
 struct WifiCredentials {
@@ -633,7 +631,11 @@ std::vector<BoardingInfo> httpGetDirections(String origin_lat, String origin_lon
   }
 
   std::vector<BoardingInfo> infos;
-  size_t count = parseAllFirstBoardingInfos(result, infos);
+  size_t count = 0;
+  while (count == 0) {
+    count = parseAllFirstBoardingInfos(result, infos);
+  }
+  // size_t 
 
   if (count == 0) {
     dbgSerial->println("No transit summary found");
@@ -1959,6 +1961,7 @@ std::vector<placeIdentifier> getPlaces(String searchQuery, Place places[], int m
   WiFiClientSecure *client = new WiFiClientSecure();
   client->setInsecure(); // for testing only
   HTTPClient https;
+  
 
  
   
@@ -2209,6 +2212,7 @@ chooseAddressStruct chooseAddress() {
       sendCommand("b3.txt=\"Loading...\"");
 
       priorStartText = startText;
+      startPlacesSearch_.clear();
       startPlacesSearch = getPlaces(startText, placesStart, PLACE_MAX, c.lat, c.lon);
       // startPlacesSearch = getPlaces("new york", placesStart, PLACE_MAX, c.lat, c.lon);
       if (!startPlacesSearch.empty()) {
@@ -2216,7 +2220,7 @@ chooseAddressStruct chooseAddress() {
           startPlacesSearch_.push_back(startPlacesSearch[i].place);
           // logMessage("Place " + String(i) + ": " + startPlacesSearch[i].place);
         }
-        sendComponentTxt(PLACE_MAX, 50, startPlacesSearch_, "b", false, 1);
+        sendComponentTxt(PLACE_MAX, 100, startPlacesSearch_, "b", false, 1);
       }
       
       
@@ -2561,7 +2565,9 @@ void block_infoPage() {
     std::vector<String> walkTimeList;
     std::vector<String> walkDistList;
 
-    std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
+    // std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
+
+    std::vector<BoardingInfo> n = httpGetDirections(origin_lat, origin_lon, dest_lat, dest_lon);
 
     
     for (int i = 0; i < n.size(); ++i) {
@@ -2647,7 +2653,7 @@ void block_infoPage() {
       int timeToLeave = roundf(timeToLeaveFloat);
       String leaveMsg;
       if (timeToLeave < 0) {
-        leaveMsg = "Now (Run )" + String(timeToLeave * -1) + " min faster";
+        leaveMsg = "Now (Run) " + String(timeToLeave * -1) + " min faster";
       } else if (timeToLeave == 0) {
         leaveMsg = "Now";
       } else {
@@ -2852,12 +2858,13 @@ void setup() {
         // dest_lon = "-80.000915";
 
 
-        startAddr = "434 Fifth Avenue, Pittsburgh, PA";
-        endAddr = "Two PNC Plaza, Liberty Avenue, Pittsburgh, PA";
-        origin_lat = "40.439484"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
-        origin_lon = "-79.998337";
-        dest_lat = "40.441891"; //Two PNC Plaza, Pittsburgh, PA 15222
-        dest_lon = "-80.000656";
+        // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
+        startAddr = "434 Shady Ave, Pittsburgh, PA 15206-4455, United States";
+        endAddr = "620 Liberty Ave, Pittsburgh (Pitt), PA 15222-2705, United States";
+        origin_lat = "40.454590"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+        origin_lon = "-79.922127";
+        dest_lat = "40.441807"; //Two PNC Plaza, Pittsburgh, PA 15222
+        dest_lon = "-80.000832";
       }
 
       block_walkTimeBus();
@@ -2933,7 +2940,7 @@ void setup() {
   // getPlaces
 
   // int PLACE_MAX = 3;
-  // std::vector<placeIdentifier> placesDebug = getPlaces("434 Shady", placesStart, PLACE_MAX, c.lat, c.lon, true);
+  // std::vector<placeIdentifier> placesDebug = getPlaces("620 liberty ave", placesStart, PLACE_MAX, c.lat, c.lon, true);
 
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
