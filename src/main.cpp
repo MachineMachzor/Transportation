@@ -48,8 +48,8 @@ const bool SKIP_WALKTIME_SET = false;
 const bool SKIP_INFO_PAGE = false;
 
 // Set all of these to false in production to not reset saved settings
-const bool RESET_SAVED_ADDRS = true;
-const bool RESET_SAVED_WALKTIME = true;
+const bool RESET_SAVED_ADDRS = false;
+const bool RESET_SAVED_WALKTIME = false;
 
 
 
