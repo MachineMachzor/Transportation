@@ -73,6 +73,7 @@ const int MAX_RESULTS = 10; // top N suggestions to keep
 const int MAX_TRANSIT_RESULTS = 2; // top N transit route suggestions to keep
 
 String pageTracker;
+bool currentPageCall = false; //If true, called the page once
 
 
 
@@ -1146,7 +1147,10 @@ void safeSetPage(String page) {
     String cmd = "page " + page;
     sendCommand(cmd);
     pageTracker = page;
+    currentPageCall = true;
     delay(500); // let Nextion switch pages
+  } else {
+    currentPageCall = false; //See how many times it goes on the page
   }
 }
 
@@ -2709,11 +2713,13 @@ void block_infoPage() {
     xSemaphoreGive(gInfoMutex);
   }
 
-
-  sendCommand("t2.txt=\"" + uiLeave + "\"");
-  sendCommand("t4.txt=\"" + uiBus + "\"");
-  sendCommand("t7.txt=\"" + uiLocation + "\"");
-  sendCommand("t10=\"" + uiRefresh + "\"");
+  if (currentPageCall) {
+    sendCommand("t2.txt=\"" + uiLeave + "\"");
+    sendCommand("t4.txt=\"" + uiBus + "\"");
+    sendCommand("t7.txt=\"" + uiLocation + "\"");
+    sendCommand("t10=\"" + uiRefresh + "\"");
+  }
+  
 
   // if (minute_changed_now()) {
   // sendCommand("b0.txt=\"Loading...\"");
@@ -2768,7 +2774,7 @@ void startNonBlockingInfoTask()
 }
 
 
-
+bool connected = false;
 
 void setup() {
   // put your setup code here, to run once:
@@ -2785,7 +2791,6 @@ void setup() {
   Serial1.begin(NEXTION_BAUD, SERIAL_8N1, 16, 17); // ESP32 hardware UART
   // send a Nextion command (must end with 0xFF 0xFF 0xFF)
   // Serial1.print("t0.txt=\"Hello\"\xFF\xFF\xFF");
-  bool connected = false;
 
   if (TESTING_NEXTION) {
     // Editor on PC listens to USB serial, so send Nextion commands to Serial.
@@ -2882,107 +2887,7 @@ void setup() {
     
   }
 
-  if (!connected) {
-    block_chooseWifi();
-    creds = block_wifiLogin();
-  }
   
-  if (creds.ok || OVERRIDE_WIFI) {
-    String msgLog = OVERRIDE_WIFI ? "OVERRIDE_WIFI set, starting setup sequence" : "WiFi connected successfully, starting setup sequence";
-
-    logMessage(msgLog);
-    if (creds.ok) {
-      c = getCurrentLocation();
-      String userTimezone = getUserTimezone();
-      const char* posix = iana_to_posix(userTimezone.c_str());
-      logMessage("User timezone: " + userTimezone + ", POSIX: " + String(posix));
-      logMessage("User lat: " + String(c.lat) + ", lon: " + String(c.lon));
-      // configTzTime("EST5EDT,M3.2.0/2,M11.1.0/2", "pool.ntp.org");
-      // configTzTime(posix, "pool.ntp.org");
-      initTimeOnce(posix);
-
-      // configTime(0, 0, "pool.ntp.org", "time.nist.gov"); // sync UTC
-      // setenv("TZ", "PST8PDT", 1); // or "EST5EDT" or a full TZ string
-      // tzset();
-      startNonBlockingInfoTask();
-
-    }
-    if (startAddr.length() == 0 || endAddr.length() == 0) {
-
-      
-      // SEARCH QUERY SEQUENCE
-      // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Tw&ech=7&pb=!2i2!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i1298!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sAvghab7tBdbV5NoP9PqxgQ0!7e81!17sAvghab7tBdbV5NoP9PqxgQ0%3A83!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i759"; // example (fragile)
-      // searchQuery = "434";
-      // getPlaces(searchQuery, places, MAX_RESULTS, c.lat, c.lon, true);
-      // dbgSerial->println("----");
-
-      // // DIRECTIONS SEQUENCE
-      
-      
-      
-      
-      if (!SKIP_ADDR_CHOOSE) {
-        block_chooseAddress();
-        // logMessage("Chosen addresses, startAddr: " + startAddr + ", endAddr: " + endAddr + ", origin_lat: " + origin_lat + ", origin_lon: " + origin_lon + ", dest_lat: " + dest_lat + ", dest_lon: " + dest_lon);
-      } else {
-        // logMessage("SKIP_ADDR_CHOOSE set, using prior addresses");
-        // startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
-        // endAddr = "Two PNC Plaza, Pittsburgh, PA 15222";
-        // // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
-        // origin_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
-        // origin_lon = "-79.921356";
-        // dest_lat = "40.442115"; //Two PNC Plaza, Pittsburgh, PA 15222
-        // dest_lon = "-80.000915";
-
-
-        // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
-        startAddr = "434 Shady Ave, Pittsburgh, PA 15206-4455, United States";
-        endAddr = "620 Liberty Ave, Pittsburgh (Pitt), PA 15222-2705, United States";
-        origin_lat = "40.454590"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
-        origin_lon = "-79.922127";
-        dest_lat = "40.441807"; //Two PNC Plaza, Pittsburgh, PA 15222
-        dest_lon = "-80.000832";
-      }
-
-      block_walkTimeBus();
-    }
-    logMessage("Chosen addresses, startAddr: " + startAddr + ", endAddr: " + endAddr + ", origin_lat: " + origin_lat + ", origin_lon: " + origin_lon + ", dest_lat: " + dest_lat + ", dest_lon: " + dest_lon);
-
-
-    
-    if (!SKIP_INFO_PAGE) {
-      block_infoPage();
-    }
-
-
-    
-    // logMessage("Current location: " + String(c.lat, 6) + ", " + String(c.lon, 6));
-    
-    
-    // logMessage("Start text: " + startText);
-    // sendCommand("get " + NO_WIFI_PAGE_MAP[compId] + ".txt");
-    // text = getButtonText(*nextionSerial); // flush any prior response
-
-
-    
-    // searchQuery.replace(" ", "+");
-    // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=" + searchQuery + "&ech=3&pb=!2i13!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i815!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sURMlaa7DOpPe5NoP99fnkQY!7e81!17sURMlaa7DOpPe5NoP99fnkQY%3A63!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i760";
-    // String body = httpGetStream(url);
-    // logMessage("Response length: " + String(body.length()));
-    // // dbgSerial->println(body); // or parse it
-    
-    
-    // int count = parsePlacesFromBody(body, places, MAX_RESULTS);
-
-    // dbgSerial->printf("Found %d places:\n", count);
-    // for (int i = 0; i < count; ++i) {
-    //   dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
-    // }
-  } else {
-    logMessage("Wi-Fi not connected");
-    // sendCommand("page NoWifi");
-    // safeSetPage("NoWifi");
-  }
 
 
   
@@ -3026,6 +2931,9 @@ void setup() {
   logMessage("HTTP server running, ready for commands.");
 }
 
+
+bool initializeOnce = true;
+
 void loop() {
   // put your main code here, to run repeatedly:
 
@@ -3061,6 +2969,117 @@ void loop() {
   
   // logMessage(getCurrentTimeString() + " - time print test");
   // delay(1000);
+
+  if (!connected) {
+    block_chooseWifi();
+    creds = block_wifiLogin();
+  }
+  
+  if ((creds.ok || OVERRIDE_WIFI) && initializeOnce) {
+    String msgLog = OVERRIDE_WIFI ? "OVERRIDE_WIFI set, starting setup sequence" : "WiFi connected successfully, starting setup sequence";
+
+    logMessage(msgLog);
+    if (creds.ok) {
+      c = getCurrentLocation();
+      String userTimezone = getUserTimezone();
+      const char* posix = iana_to_posix(userTimezone.c_str());
+      logMessage("User timezone: " + userTimezone + ", POSIX: " + String(posix));
+      logMessage("User lat: " + String(c.lat) + ", lon: " + String(c.lon));
+      // configTzTime("EST5EDT,M3.2.0/2,M11.1.0/2", "pool.ntp.org");
+      // configTzTime(posix, "pool.ntp.org");
+      initTimeOnce(posix);
+
+      // configTime(0, 0, "pool.ntp.org", "time.nist.gov"); // sync UTC
+      // setenv("TZ", "PST8PDT", 1); // or "EST5EDT" or a full TZ string
+      // tzset();
+      startNonBlockingInfoTask();
+      initializeOnce = false;
+
+    }
+    if (startAddr.length() == 0 || endAddr.length() == 0) {
+
+      
+      // SEARCH QUERY SEQUENCE
+      // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=Tw&ech=7&pb=!2i2!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i1298!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sAvghab7tBdbV5NoP9PqxgQ0!7e81!17sAvghab7tBdbV5NoP9PqxgQ0%3A83!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i759"; // example (fragile)
+      // searchQuery = "434";
+      // getPlaces(searchQuery, places, MAX_RESULTS, c.lat, c.lon, true);
+      // dbgSerial->println("----");
+
+      // // DIRECTIONS SEQUENCE
+      
+      
+      
+      
+      if (!SKIP_ADDR_CHOOSE) {
+        if (startAddr.length() == 0 || endAddr.length() == 0 ||
+            origin_lat.length() == 0 || origin_lon.length() == 0 ||
+            dest_lat.length() == 0 || dest_lon.length() == 0) {
+          
+          block_chooseAddress();
+          logMessage("Chosen addresses, startAddr: " + startAddr + ", endAddr: " + endAddr + ", origin_lat: " + origin_lat + ", origin_lon: " + origin_lon + ", dest_lat: " + dest_lat + ", dest_lon: " + dest_lon);
+
+        }
+        
+        // logMessage("Chosen addresses, startAddr: " + startAddr + ", endAddr: " + endAddr + ", origin_lat: " + origin_lat + ", origin_lon: " + origin_lon + ", dest_lat: " + dest_lat + ", dest_lon: " + dest_lon);
+      } else {
+        // logMessage("SKIP_ADDR_CHOOSE set, using prior addresses");
+        // startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
+        // endAddr = "Two PNC Plaza, Pittsburgh, PA 15222";
+        // // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
+        // origin_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+        // origin_lon = "-79.921356";
+        // dest_lat = "40.442115"; //Two PNC Plaza, Pittsburgh, PA 15222
+        // dest_lon = "-80.000915";
+
+
+        // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
+        startAddr = "434 Shady Ave, Pittsburgh, PA 15206-4455, United States";
+        endAddr = "620 Liberty Ave, Pittsburgh (Pitt), PA 15222-2705, United States";
+        origin_lat = "40.454590"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+        origin_lon = "-79.922127";
+        dest_lat = "40.441807"; //Two PNC Plaza, Pittsburgh, PA 15222
+        dest_lon = "-80.000832";
+      }
+      if (walkTime == WALKTIME_NONE || milesComputeSaved == WALKTIME_NONE || bus.length() == 0) {
+        block_walkTimeBus();
+      }
+    }
+
+
+    
+    if (!SKIP_INFO_PAGE) {
+      block_infoPage();
+    }
+
+
+    
+    // logMessage("Current location: " + String(c.lat, 6) + ", " + String(c.lon, 6));
+    
+    
+    // logMessage("Start text: " + startText);
+    // sendCommand("get " + NO_WIFI_PAGE_MAP[compId] + ".txt");
+    // text = getButtonText(*nextionSerial); // flush any prior response
+
+
+    
+    // searchQuery.replace(" ", "+");
+    // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=" + searchQuery + "&ech=3&pb=!2i13!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i815!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sURMlaa7DOpPe5NoP99fnkQY!7e81!17sURMlaa7DOpPe5NoP99fnkQY%3A63!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i760";
+    // String body = httpGetStream(url);
+    // logMessage("Response length: " + String(body.length()));
+    // // dbgSerial->println(body); // or parse it
+    
+    
+    // int count = parsePlacesFromBody(body, places, MAX_RESULTS);
+
+    // dbgSerial->printf("Found %d places:\n", count);
+    // for (int i = 0; i < count; ++i) {
+    //   dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
+    // }
+  } else {
+    logMessage("Wi-Fi not connected");
+    // sendCommand("page NoWifi");
+    // safeSetPage("NoWifi");
+  }
 
   server.handleClient(); 
   // dbgSerial->println(seconds_until_next_minute());
