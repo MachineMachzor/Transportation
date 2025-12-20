@@ -21,6 +21,10 @@
 #include <ctype.h>
 #include <cmath>
 #include "esp_sntp.h" // for sntp_get_sync_status()
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+
 
 
 
@@ -2562,6 +2566,10 @@ String busUsed = "Computing Transport...";
 String firstLocation = "Computing Location...";
 String timeOfRefresh = "";
 
+// mutex to protect shared globals
+static SemaphoreHandle_t gInfoMutex = NULL;
+
+
 
 
 String getCurrentTimeString(bool spaceBeforeAmPm=true, uint32_t timeoutMs = 10000)
@@ -2740,6 +2748,7 @@ void nonBlockingInfoCall() {
 void block_infoPage() {
   safeSetPage("InfoPage");
 
+  // Ideally call this without blocking
   nonBlockingInfoCall();
 
   sendCommand("t2.txt=\"" + leaveMsg + "\"");
