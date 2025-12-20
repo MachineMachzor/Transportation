@@ -31,7 +31,7 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = false;//If false, should be production nextion
+const bool TESTING_NEXTION = true;//If false, should be production nextion
 const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one, false for production
 const bool RESET_SAVED_WIFI = true; //Set to true to reset saved wifi credentials, this should be false in production
 
@@ -45,7 +45,7 @@ const bool SKIP_WIFI_LOGIN = true;
 const bool SKIP_ADDR_CHOOSE = true;
 const bool SKIP_FIRST_BUS_SELECT = true;
 const bool SKIP_WALKTIME_SET = true;
-const bool SKIP_INFO_PAGE = true;
+const bool SKIP_INFO_PAGE = false;
 
 // Set all of these to false in production to not reset saved settings
 const bool RESET_SAVED_ADDRS = true;
@@ -2624,15 +2624,17 @@ void nonBlockingInfoTask(void *pvParameters) {
     String localBus = "N/A";
     String localLocation = "N/A";
     String localRefresh = getCurrentTimeString();
+    // String localRefresh_ = getCurrentTimeString();
+    bool updated = false;
 
     int targetHour = 0, targetMin = 0;
     
     parseTimeString(localRefresh, targetHour, targetMin);
     String comparisonTime = String(targetHour) + ":" + String(targetMin);
-
+    String nextBusTimeStr;
     if (n.size() > 0) {
       // String utcTimeNow = getCurrentTimeString(); // or getTimeNowUTC() if you have it
-      String nextBusTimeStr = n[0].nextBusTime;
+      nextBusTimeStr = n[0].nextBusTime;
       float walkDistNew = n[0].walkDistance.toFloat();
       // int diffTimeMin = minutesDifferenceFromEpochMs(comparisonTime, nextBusTimeStr.c_str());
       int diffTimeMin = minutesDifferenceHHMM(comparisonTime, nextBusTimeStr);
@@ -2649,6 +2651,7 @@ void nonBlockingInfoTask(void *pvParameters) {
       } else {
         localLeave = String(timeToLeave) + " min";
       }
+      updated = true;
       // reset reloadAttempt if you want; be careful if reloadAttempt is shared (protect it)
     } else {
       // String makeReloadStr = (reloadAttempt < 10) ? " (Reload Attempt " + String(reloadAttempt) + ")" : "(More than 10 reloads)";
@@ -2657,24 +2660,32 @@ void nonBlockingInfoTask(void *pvParameters) {
       // localLocation = "N/A";
       // increment reloadAttempt under mutex if needed
     }
-
-    if (pageTracker == "InfoPage") {
-      // dbgSerial->println("InfoPage active, updating display now.");
-      // update display immediately
-      sendCommand("t2.txt=\"" + localLeave + "\"");
-      sendCommand("t4.txt=\"" + localBus + "\"");
-      sendCommand("t7.txt=\"" + localLocation + "\"");
-      sendCommand("t10=\"" + localRefresh + "\"");
+    if (nextBusTimeStr.length() > 0 ) {
+      
     }
+    localLeave += " (Next Bus: " + nextBusTimeStr + ")";
 
-    // Commit results under mutex (short hold)
-    if (xSemaphoreTake(gInfoMutex, pdMS_TO_TICKS(200))) {
-      leaveMsg = localLeave;
-      busUsed = localBus;
-      firstLocation = localLocation;
-      timeOfRefresh = localRefresh;
-      xSemaphoreGive(gInfoMutex);
+
+    
+    if (updated) {
+      if (pageTracker == "InfoPage") {
+        // dbgSerial->println("InfoPage active, updating display now.");
+        // update display immediately
+        sendCommand("t2.txt=\"" + localLeave + "\"");
+        sendCommand("t4.txt=\"" + localBus + "\"");
+        sendCommand("t7.txt=\"" + localLocation + "\"");
+        sendCommand("t10.txt=\"" + localRefresh + "\"");
+      }
+      // Commit results under mutex (short hold)
+      if (xSemaphoreTake(gInfoMutex, pdMS_TO_TICKS(200))) {
+        leaveMsg = localLeave;
+        busUsed = localBus;
+        firstLocation = localLocation;
+        timeOfRefresh = localRefresh;
+        xSemaphoreGive(gInfoMutex);
+      }
     }
+    
 
     // Sleep until next passive check
     vTaskDelay(PASSIVE_INTERVAL);
@@ -3036,16 +3047,16 @@ void loop() {
   //   }
   // }
 
-  String uiLeave, uiBus, uiLocation, uiRefresh;
-  if (xSemaphoreTake(gInfoMutex, pdMS_TO_TICKS(50))) {
-    uiLeave = leaveMsg;
-    uiBus = busUsed;
-    uiLocation = firstLocation;
-    uiRefresh = timeOfRefresh;
-    xSemaphoreGive(gInfoMutex);
-  }
-  dbgSerial->println("uiLeave: " + uiLeave + ", uiBus: " + uiBus + ", uiLocation: " + uiLocation + ", uiRefresh: " + uiRefresh);
-  delay(1000);
+  // String uiLeave, uiBus, uiLocation, uiRefresh;
+  // if (xSemaphoreTake(gInfoMutex, pdMS_TO_TICKS(50))) {
+  //   uiLeave = leaveMsg;
+  //   uiBus = busUsed;
+  //   uiLocation = firstLocation;
+  //   uiRefresh = timeOfRefresh;
+  //   xSemaphoreGive(gInfoMutex);
+  // }
+  // dbgSerial->println("uiLeave: " + uiLeave + ", uiBus: " + uiBus + ", uiLocation: " + uiLocation + ", uiRefresh: " + uiRefresh);
+  // delay(1000);
   
   // logMessage(getCurrentTimeString() + " - time print test");
   // delay(1000);
