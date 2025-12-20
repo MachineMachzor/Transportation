@@ -31,7 +31,7 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = true;//If false, should be production nextion
+const bool TESTING_NEXTION = false;//If false, should be production nextion
 const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one, false for production
 const bool RESET_SAVED_WIFI = true; //Set to true to reset saved wifi credentials, this should be false in production
 
@@ -45,7 +45,7 @@ const bool SKIP_WIFI_LOGIN = true;
 const bool SKIP_ADDR_CHOOSE = true;
 const bool SKIP_FIRST_BUS_SELECT = true;
 const bool SKIP_WALKTIME_SET = true;
-const bool SKIP_INFO_PAGE = false;
+const bool SKIP_INFO_PAGE = true;
 
 // Set all of these to false in production to not reset saved settings
 const bool RESET_SAVED_ADDRS = true;
@@ -388,8 +388,8 @@ size_t parseAllFirstBoardingInfos(const String &jsonPart, std::vector<BoardingIn
   DynamicJsonDocument doc(capacity);
   DeserializationError err = deserializeJson(doc, extractJsonPart(jsonPart));
   if (err) {
-    Serial.print("JSON parse failed: ");
-    Serial.println(err.c_str());
+    dbgSerial->print("JSON parse failed: ");
+    dbgSerial->println(err.c_str());
     return 0;
   }
 
@@ -638,9 +638,9 @@ std::vector<BoardingInfo> httpGetDirections(String origin_lat, String origin_lon
 
   std::vector<BoardingInfo> infos;
   size_t count = 0;
-  while (count == 0) {
-    count = parseAllFirstBoardingInfos(result, infos);
-  }
+  // while (count == 0) {
+  count = parseAllFirstBoardingInfos(result, infos);
+  // }
   // size_t 
 
   if (count == 0) {
@@ -1057,6 +1057,18 @@ int minutesDifferenceFromEpochMs(const String &epochMsStr, const String &nextBus
   }
 
   return diffMinutes;
+}
+
+
+int minutesDifferenceHHMM(const String& nowStr, const String& nextStr) {
+    int nowH, nowM, nextH, nextM;
+    if (!parseTimeString(nowStr, nowH, nowM)) return INT_MIN;
+    if (!parseTimeString(nextStr, nextH, nextM)) return INT_MIN;
+
+    int nowTotal = nowH * 60 + nowM;
+    int nextTotal = nextH * 60 + nextM;
+
+    return nextTotal - nowTotal;
 }
 
 
@@ -1913,11 +1925,11 @@ int parsePlacesFromBody(const String &body, Place places[], int maxPlaces) {
 
   DeserializationError err = deserializeJson(doc, jsonPart);
   if (err) {
-    Serial.print("JSON parse failed: ");
-    Serial.println(err.c_str());
+    dbgSerial->print("JSON parse failed: ");
+    dbgSerial->println(err.c_str());
     // Print a short snippet for debugging
-    Serial.print("Snippet: ");
-    Serial.println(jsonPart.substring(0, min(200, int(jsonPart.length()))));
+    dbgSerial->print("Snippet: ");
+    dbgSerial->println(jsonPart.substring(0, min(200, int(jsonPart.length()))));
     return 0;
   }
 
@@ -2042,68 +2054,6 @@ std::vector<placeIdentifier> getPlaces(String searchQuery, Place places[], int m
 }
 
 BoardingInfo infos[MAX_RESULTS];
-
-
-
-std::vector<BoardingInfo> getDirections(String start, String end, double newLat, double newLong, bool verbose=false) {
-  start.replace(" ", "+");
-  start.replace(",", "%2C");
-  end.replace(" ", "+");
-  end.replace(",", "%2C");
-  // PROD URL:
-  // String url = "https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s" + start + "!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s" + end + "!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184";
-  // url = setPbCenter(url, newLat, newLong); // set to user's location
-  
-  float startLat_ = 40.4546065; 
-  float startLon_ = -79.92213079999999;
-  float endLat_ = 40.473932;
-  float endLon_ = -79.918057;
-
-
-  // TESTING
-  // String url = "https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s" + start + "!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s" + end + "!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184";
-  String url = "https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s" + start + "!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d" + String(startLat_) + "!4d" + String(startLon_) + "!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s" + end + "!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d" + String(endLat_) + "!4d" + String(endLon_) + "!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184";
-
-  if (verbose) {
-    dbgSerial->println("DirectionsURL: " + url);
-  }
-  // 
-  // return 0;
-  String body = httpGetStream(url);
-  logMessage("Directions response length: " + String(body.length()));
-  // dbgSerial->println("Directions response: " + body.substring(0, min(200, int(body.length())))); // print first 200 chars
-
-  std::vector<BoardingInfo> n = parseBoardingInfos(body, infos, MAX_RESULTS);
-  // return;
-
-  logMessage("Found " + String(n.size()) + " boarding entries.");
-  // dbgSerial->print(n);
-  // dbgSerial->println(" boarding entries:");
-  if (verbose) {
-    for (int i = 0; i < n.size(); ++i) {
-      dbgSerial->println("---");
-      dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
-      dbgSerial->print("Walk distance: "); dbgSerial->println(n[i].walkDistance);
-      dbgSerial->print("Walk time: "); dbgSerial->println(n[i].walkTime);
-      dbgSerial->print("Station: "); dbgSerial->println(n[i].stationName);
-      dbgSerial->print("Next bus: "); dbgSerial->println(n[i].nextBusTime);
-    }
-  }
-  
-
-
-  // dbgSerial->println(body); // or parse it
-  
-  
-  // int count = parsePlacesFromBody(body, places, MAX_RESULTS);
-
-  // dbgSerial->printf("Found %d places:\n", count);
-  // for (int i = 0; i < count; ++i) {
-  //   dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
-  // }
-  return n;
-}
-
 
 currentLocation c;
 String appendChosen = "Chosen: ";
@@ -2566,22 +2516,48 @@ String busUsed = "Computing Transport...";
 String firstLocation = "Computing Location...";
 String timeOfRefresh = "";
 
+WifiCredentials creds;
+
 // mutex to protect shared globals
 static SemaphoreHandle_t gInfoMutex = NULL;
 
 
 
+void initTimeOnce(const char* posixTz, uint32_t timeoutMs = 15000) {
+    static bool initialized = false;
+    if (initialized) return;
+
+    configTzTime(posixTz, "pool.ntp.org");
+
+    uint32_t start = millis();
+    time_t now;
+    struct tm timeinfo;
+
+    while (millis() - start < timeoutMs) {
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        if (timeinfo.tm_year >= (2020 - 1900)) {  // sanity check
+            initialized = true;
+            return;
+        }
+        delay(200);
+    }
+
+    // If we get here, NTP failed. You can still proceed; clock will be wrong.
+}
+
 
 String getCurrentTimeString(bool spaceBeforeAmPm=true, uint32_t timeoutMs = 10000)
 {
     // Wait for SNTP to sync (timeoutMs milliseconds)
-    uint32_t start = millis();
-    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET) {
-        if (millis() - start >= timeoutMs) {
-            return String("Time not set");
-        }
-        delay(200);
-    }
+    // We only need the below once
+    // uint32_t start = millis();
+    // while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET) {
+    //     if (millis() - start >= timeoutMs) {
+    //         return String("Time not set");
+    //     }
+    //     delay(200);
+    // }
 
     // Now read time
     time_t now;
@@ -2610,151 +2586,122 @@ String getCurrentTimeString(bool spaceBeforeAmPm=true, uint32_t timeoutMs = 1000
     return String(buf);
 }
 
+const TickType_t PASSIVE_INTERVAL = pdMS_TO_TICKS(1000); // run once per minute
 
-void nonBlockingInfoCall() {
-  if (origin_lat.length() == 0 || origin_lon.length() == 0 || dest_lat.length() == 0 || dest_lon.length() == 0 || walkTime == WALKTIME_NONE || milesComputeSaved == WALKTIME_NONE) {
-    // logMessage("Origin or destination coordinates not set, skipping info call.");
-    return;
-  }
-  std::vector<String> transitList;
-  std::vector<String> walkTimeList;
-  std::vector<String> walkDistList;
+void nonBlockingInfoTask(void *pvParameters) {
+  for (;;) {
+    // Snapshot inputs under mutex (short hold)
+    String s_origin_lat, s_origin_lon, s_dest_lat, s_dest_lon;
+    float s_walkTime = WALKTIME_NONE, s_miles = WALKTIME_NONE;
 
-  // std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
-
-  std::vector<BoardingInfo> n = httpGetDirections(origin_lat, origin_lon, dest_lat, dest_lon);
-
-  
-  for (int i = 0; i < n.size(); ++i) {
-    transitList.push_back(n[i].busLabel);
-    // dbgSerial->println("---");
-    dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
-    walkTimeList.push_back(n[i].walkTime);
-    walkDistList.push_back(n[i].walkDistance);
-    // dbgSerial->print("Walk distance: "); dbgSerial->println(infos[i].walkDistance);
-    // dbgSerial->print("Walk time: "); dbgSerial->println(infos[i].walkTime);
-    // dbgSerial->print("Station: "); dbgSerial->println(infos[i].stationName);
-    // dbgSerial->print("Next bus: "); dbgSerial->println(infos[i].nextBusTime);
-  }
-  int remaining = MAX_TRANSIT_RESULTS - int(n.size());
-  // logMessage("Any remaining blanks " + String((MAX_TRANSIT_RESULTS - int(n.size()))));
-  for (int i = 0; i < remaining; i++) {
-    transitList.push_back(""); // pad out to max
-  }
-  bool useBestBus;
-  String useBestBusStr;
-  if (pageTracker == "InfoPage") {
-    sendCommand("get c0.val");
-    useBestBusStr = getButtonText(*nextionSerial); // flush any prior response
-    
-  } else {
-    useBestBusStr = firstBusOnlySaved;//loadStringSetting(CONST_KEYS.firstBusOnly.c_str());
-  }
-  useBestBus = (useBestBusStr == "1");
-  
-  if (useBestBusStr != firstBusOnlySaved) {
-    saveSetting(CONST_KEYS.firstBusOnly.c_str(), useBestBusStr.c_str());
-  }
-  // startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
-  // endAddr = "400 E Waterfront Dr, Homestead, PA 15120";
-  // std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
-
-  // Check if bus is in the list
-  if (bus.length() > 0) {
-    logMessage("Checking for saved bus: " + bus);
-    int busIdx = indexOf(transitList, bus);
-    if (busIdx >= 0) {
-      logMessage("Saved bus found in transit list: " + bus + ", index: " + String(busIdx));
-      // Filter n to only have this bus
-      std::vector<BoardingInfo> nFiltered;
-      nFiltered.push_back(n[busIdx]);
-      n = nFiltered;
+    if (xSemaphoreTake(gInfoMutex, pdMS_TO_TICKS(200))) {
+      s_origin_lat = origin_lat;
+      s_origin_lon = origin_lon;
+      s_dest_lat   = dest_lat;
+      s_dest_lon   = dest_lon;
+      s_walkTime   = walkTime;
+      s_miles      = milesComputeSaved;
+      xSemaphoreGive(gInfoMutex);
     } else {
-      logMessage("Saved bus not found in transit list: " + bus + ", using first available bus");
-      // If not found, and useBestBus is false, just use first bus
-      if (!useBestBus && n.size() > 1) {
-        std::vector<BoardingInfo> nFiltered;
-        nFiltered.push_back(n[0]);
-        n = nFiltered;
+      // couldn't take mutex; skip this cycle
+      vTaskDelay(PASSIVE_INTERVAL);
+      continue;
+    }
+
+    // quick pre-check (no mutex held)
+    if (s_origin_lat.length() == 0 || s_origin_lon.length() == 0 ||
+        s_dest_lat.length() == 0   || s_dest_lon.length() == 0 ||
+        s_walkTime == WALKTIME_NONE || s_miles == WALKTIME_NONE || !creds.ok) {
+      vTaskDelay(PASSIVE_INTERVAL);
+      continue;
+    }
+
+    // Do the network/compute work using local copies (this may block, but only this task)
+    std::vector<BoardingInfo> n = httpGetDirections(s_origin_lat, s_origin_lon, s_dest_lat, s_dest_lon);
+
+    // compute local results
+    String localLeave = "N/A";
+    String localBus = "N/A";
+    String localLocation = "N/A";
+    String localRefresh = getCurrentTimeString();
+
+    int targetHour = 0, targetMin = 0;
+    
+    parseTimeString(localRefresh, targetHour, targetMin);
+    String comparisonTime = String(targetHour) + ":" + String(targetMin);
+
+    if (n.size() > 0) {
+      // String utcTimeNow = getCurrentTimeString(); // or getTimeNowUTC() if you have it
+      String nextBusTimeStr = n[0].nextBusTime;
+      float walkDistNew = n[0].walkDistance.toFloat();
+      // int diffTimeMin = minutesDifferenceFromEpochMs(comparisonTime, nextBusTimeStr.c_str());
+      int diffTimeMin = minutesDifferenceHHMM(comparisonTime, nextBusTimeStr);
+      localBus = n[0].busLabel;
+      localLocation = n[0].stationName;
+      float relativeNewWalkTime = newWalkTime(s_walkTime, s_miles, walkDistNew);
+      dbgSerial->println("relativeNewWalkTime: " + String(relativeNewWalkTime) + " diffTimeMin: " + String(diffTimeMin) + " s_walkTime: " + String(s_walkTime) + " s_miles: " + String(s_miles) + " walkDistNew: " + String(walkDistNew) + " localRefresh: " + localRefresh + " nextBusTimeStr: " + nextBusTimeStr + " comparisonTime: " + comparisonTime);
+      float timeToLeaveFloat = diffTimeMin - relativeNewWalkTime;
+      int timeToLeave = roundf(timeToLeaveFloat);
+      if (timeToLeave < 0) {
+        localLeave = "Now (Run) " + String(timeToLeave * -1) + " min faster";
+      } else if (timeToLeave == 0) {
+        localLeave = "Now";
+      } else {
+        localLeave = String(timeToLeave) + " min";
       }
-    }
-  } else {
-    logMessage("No saved bus specified, using first available bus");
-    // If no bus specified, and useBestBus is false, just use first bus
-    if (!useBestBus && n.size() > 1) {
-      std::vector<BoardingInfo> nFiltered;
-      nFiltered.push_back(n[0]);
-      n = nFiltered;
-    }
-  }
-
-  if (n.size() > 0) {
-    String utcTimeNow = getTimeNowUTC();
-    String nextBusTimeStr = n[0].nextBusTime;
-    // float walkDistNew = distanceStringToMiles(n[0].walkDistance);
-    float walkDistNew = n[0].walkDistance.toFloat();
-    int diffTimeMin = minutesDifferenceFromEpochMs(utcTimeNow, nextBusTimeStr.c_str());
-    busUsed = n[0].busLabel;
-    firstLocation = n[0].stationName;
-
-    float relativeNewWalkTime = newWalkTime(walkTime, milesComputeSaved, walkDistNew);
-
-    // int nextBusTime = minutesDifferenceFromEpochMs(utcTimeNow, n[i].nextBusTime.c_str());
-    // for (int i = 0; i < n.size(); ++i) {
-      // dbgSerial->print("Bus: "); dbgSerial->println(n[i].busLabel);
-      // dbgSerial->print("Walk distance: "); dbgSerial->println(n[i].walkDistance);
-      // dbgSerial->print("Walk time: "); dbgSerial->println(n[i].walkTime);
-      // dbgSerial->print("Station: "); dbgSerial->println(n[i].stationName);
-      // dbgSerial->print("Next bus: "); dbgSerial->println(n[i].nextBusTime);
-      // 
-      
-
-      // dbgSerial->print("Next bus in minutes: "); dbgSerial->println(nextBusTime);
-    // }
-    logMessage("Using bus: " + busUsed + ", First location: " + firstLocation + ", In relation to our time next bus is in: " + String(diffTimeMin) + " min, " + "Next bus time: " + nextBusTimeStr + ", Original walk time: " + String(walkTime) + " min, Original miles: " + String(milesComputeSaved) + " New walk time: " + String(relativeNewWalkTime) + " min" + ", For walk distance of " + String(walkDistNew) + " miles");
-    float timeToLeaveFloat = diffTimeMin - relativeNewWalkTime;
-    int timeToLeave = roundf(timeToLeaveFloat);
-    if (timeToLeave < 0) {
-      leaveMsg = "Now (Run) " + String(timeToLeave * -1) + " min faster";
-    } else if (timeToLeave == 0) {
-      leaveMsg = "Now";
+      // reset reloadAttempt if you want; be careful if reloadAttempt is shared (protect it)
     } else {
-      leaveMsg = String(timeToLeave) + " min";
+      // String makeReloadStr = (reloadAttempt < 10) ? " (Reload Attempt " + String(reloadAttempt) + ")" : "(More than 10 reloads)";
+      // localLeave = "N/A " + makeReloadStr;
+      // localBus = "N/A";
+      // localLocation = "N/A";
+      // increment reloadAttempt under mutex if needed
     }
-    // sendCommand("t2.txt=\"" + leaveMsg + "\"");
-    // sendCommand("t4.txt=\"" + busUsed + "\"");
-    // sendCommand("t7.txt=\"" + firstLocation + "\"");
-    reloadAttempt = 0; // reset on success
-  } else {
-    logMessage("No transit options found for the given addresses.");
-    String makeReloadStr = (reloadAttempt < 10) ? " (Reload Attempt " + String(reloadAttempt) + ")" : "(More than 10 reloads)";
-    // Log unfound messages or just do something here, suggest re-choosing addresses
-    leaveMsg = "N/A " + makeReloadStr;
-    busUsed = "N/A";
-    firstLocation = "N/A";
-    // sendCommand("t2.txt=\"N/A " + makeReloadStr + "\"");
-    // sendCommand("t4.txt=\"N/A\"");
-    // sendCommand("t7.txt=\"N/A\"");
-    if (reloadAttempt < 10) {
-      reloadAttempt += 1;
-    }
-    // sendCommand("t10=\"" + timeOfRefresh + "\"");
-    
-  }
-  timeOfRefresh = getCurrentTimeString();
 
+    if (pageTracker == "InfoPage") {
+      // dbgSerial->println("InfoPage active, updating display now.");
+      // update display immediately
+      sendCommand("t2.txt=\"" + localLeave + "\"");
+      sendCommand("t4.txt=\"" + localBus + "\"");
+      sendCommand("t7.txt=\"" + localLocation + "\"");
+      sendCommand("t10=\"" + localRefresh + "\"");
+    }
+
+    // Commit results under mutex (short hold)
+    if (xSemaphoreTake(gInfoMutex, pdMS_TO_TICKS(200))) {
+      leaveMsg = localLeave;
+      busUsed = localBus;
+      firstLocation = localLocation;
+      timeOfRefresh = localRefresh;
+      xSemaphoreGive(gInfoMutex);
+    }
+
+    // Sleep until next passive check
+    vTaskDelay(PASSIVE_INTERVAL);
+  }
+
+  vTaskDelete(NULL);
 }
 
 void block_infoPage() {
   safeSetPage("InfoPage");
 
   // Ideally call this without blocking
-  nonBlockingInfoCall();
+  // nonBlockingInfoCall();
+  String uiLeave, uiBus, uiLocation, uiRefresh;
+  if (xSemaphoreTake(gInfoMutex, pdMS_TO_TICKS(50))) {
+    uiLeave = leaveMsg;
+    uiBus = busUsed;
+    uiLocation = firstLocation;
+    uiRefresh = timeOfRefresh;
+    xSemaphoreGive(gInfoMutex);
+  }
 
-  sendCommand("t2.txt=\"" + leaveMsg + "\"");
-  sendCommand("t4.txt=\"" + busUsed + "\"");
-  sendCommand("t7.txt=\"" + firstLocation + "\"");
-  sendCommand("t10=\"" + timeOfRefresh + "\"");
+
+  sendCommand("t2.txt=\"" + uiLeave + "\"");
+  sendCommand("t4.txt=\"" + uiBus + "\"");
+  sendCommand("t7.txt=\"" + uiLocation + "\"");
+  sendCommand("t10=\"" + uiRefresh + "\"");
 
   // if (minute_changed_now()) {
   // sendCommand("b0.txt=\"Loading...\"");
@@ -2781,12 +2728,32 @@ void block_infoPage() {
     // block_walkTimeBus();
     // safeSetPage("InfoPage");
   }
+  // delay(200);
   // }
 }
 
 
 
+void startNonBlockingInfoTask()
+{
+  if (gInfoMutex == NULL) {
+    gInfoMutex = xSemaphoreCreateMutex();
+  }
 
+  BaseType_t ok = xTaskCreatePinnedToCore(
+    nonBlockingInfoTask,   // task function
+    "InfoTask",            // name
+    8192,                  // stack size (bytes) — increase if you see stack overflows
+    NULL,                  // parameter
+    1,                     // priority (adjust if needed)
+    NULL,                  // task handle
+    1                      // core (0 or 1)
+  );
+
+  if (ok != pdPASS) {
+    dbgSerial->println("Failed to create InfoTask");
+  }
+}
 
 
 
@@ -2837,7 +2804,7 @@ void setup() {
   WiFi.mode(WIFI_STA); //Set wifi to station mode
   
   // delay(100);   //Would remove prior connections, it stores it by default, could check to see if it's connected off the bat
-  WifiCredentials creds;
+  
   if (FAKE_WIFI) { // This is for testing really
     saveSetting(CONST_KEYS.ssid.c_str(), ssidTest);
     saveSetting(CONST_KEYS.pass.c_str(), passwordTest); 
@@ -2910,6 +2877,7 @@ void setup() {
   
   if (creds.ok || OVERRIDE_WIFI) {
     String msgLog = OVERRIDE_WIFI ? "OVERRIDE_WIFI set, starting setup sequence" : "WiFi connected successfully, starting setup sequence";
+
     logMessage(msgLog);
     if (creds.ok) {
       c = getCurrentLocation();
@@ -2918,10 +2886,13 @@ void setup() {
       logMessage("User timezone: " + userTimezone + ", POSIX: " + String(posix));
       logMessage("User lat: " + String(c.lat) + ", lon: " + String(c.lon));
       // configTzTime("EST5EDT,M3.2.0/2,M11.1.0/2", "pool.ntp.org");
-      configTzTime(posix, "pool.ntp.org");
+      // configTzTime(posix, "pool.ntp.org");
+      initTimeOnce(posix);
+
       // configTime(0, 0, "pool.ntp.org", "time.nist.gov"); // sync UTC
       // setenv("TZ", "PST8PDT", 1); // or "EST5EDT" or a full TZ string
       // tzset();
+      startNonBlockingInfoTask();
 
     }
     if (startAddr.length() == 0 || endAddr.length() == 0) {
@@ -3035,7 +3006,7 @@ void setup() {
 
   // int PLACE_MAX = 3;
   // std::vector<placeIdentifier> placesDebug = getPlaces("620 liberty ave", placesStart, PLACE_MAX, c.lat, c.lon, true);
-  // logMessage(getCurrentTimeString() + " - time print test");
+  
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
   server.begin();
@@ -3064,6 +3035,21 @@ void loop() {
   //     // break;
   //   }
   // }
+
+  String uiLeave, uiBus, uiLocation, uiRefresh;
+  if (xSemaphoreTake(gInfoMutex, pdMS_TO_TICKS(50))) {
+    uiLeave = leaveMsg;
+    uiBus = busUsed;
+    uiLocation = firstLocation;
+    uiRefresh = timeOfRefresh;
+    xSemaphoreGive(gInfoMutex);
+  }
+  dbgSerial->println("uiLeave: " + uiLeave + ", uiBus: " + uiBus + ", uiLocation: " + uiLocation + ", uiRefresh: " + uiRefresh);
+  delay(1000);
+  
+  // logMessage(getCurrentTimeString() + " - time print test");
+  // delay(1000);
+
   server.handleClient(); 
   // dbgSerial->println(seconds_until_next_minute());
 }
