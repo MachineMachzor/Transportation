@@ -20,12 +20,14 @@
 #include <time.h>
 #include <ctype.h>
 #include <cmath>
+#include "esp_sntp.h" // for sntp_get_sync_status()
+
 
 
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = true;//If false, should be production nextion
+const bool TESTING_NEXTION = false;//If false, should be production nextion
 const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one, false for production
 const bool RESET_SAVED_WIFI = true; //Set to true to reset saved wifi credentials, this should be false in production
 
@@ -39,7 +41,7 @@ const bool SKIP_WIFI_LOGIN = true;
 const bool SKIP_ADDR_CHOOSE = true;
 const bool SKIP_FIRST_BUS_SELECT = true;
 const bool SKIP_WALKTIME_SET = true;
-const bool SKIP_INFO_PAGE = false;
+const bool SKIP_INFO_PAGE = true;
 
 // Set all of these to false in production to not reset saved settings
 const bool RESET_SAVED_ADDRS = true;
@@ -2700,6 +2702,47 @@ void block_infoPage() {
 }
 
 
+String getCurrentTimeString(bool spaceBeforeAmPm=true, uint32_t timeoutMs = 10000)
+{
+    // Wait for SNTP to sync (timeoutMs milliseconds)
+    uint32_t start = millis();
+    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET) {
+        if (millis() - start >= timeoutMs) {
+            return String("Time not set");
+        }
+        delay(200);
+    }
+
+    // Now read time
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+
+    // Extra safety: check year
+    if (timeinfo.tm_year < (2020 - 1900)) {
+        return String("Time not set");
+    }
+
+    int hour24 = timeinfo.tm_hour;
+    int hour12 = hour24 % 12;
+    if (hour12 == 0) hour12 = 12;
+    int minute = timeinfo.tm_min;
+    const char *ampm = (hour24 >= 12) ? "pm" : "am";
+
+    char buf[16];
+    if (spaceBeforeAmPm) {
+        snprintf(buf, sizeof(buf), "%d:%02d %s", hour12, minute, ampm); // "10:00 am"
+    } else {
+        snprintf(buf, sizeof(buf), "%d:%02d%s", hour12, minute, ampm);  // "7:06pm"
+    }
+
+    return String(buf);
+}
+
+
+
+
 
 
 void setup() {
@@ -2941,7 +2984,7 @@ void setup() {
 
   // int PLACE_MAX = 3;
   // std::vector<placeIdentifier> placesDebug = getPlaces("620 liberty ave", placesStart, PLACE_MAX, c.lat, c.lon, true);
-
+  logMessage(getCurrentTimeString() + " - time print test");
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
   server.begin();
