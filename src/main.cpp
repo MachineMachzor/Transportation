@@ -2696,6 +2696,7 @@ void nonBlockingInfoTask(void *pvParameters) {
 
 void block_infoPage() {
   safeSetPage("InfoPage");
+  sendCommand("t9.txt=\"(Unchecked Uses " + bus + " If Available)\""); //Immediately specify saved bus
 
   // Ideally call this without blocking
   // nonBlockingInfoCall();
