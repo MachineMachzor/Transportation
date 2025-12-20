@@ -32,19 +32,19 @@
 
 Preferences prefs;
 const bool TESTING_NEXTION = true;//If false, should be production nextion
-const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one, false for production
-const bool RESET_SAVED_WIFI = true; //Set to true to reset saved wifi credentials, this should be false in production
+const bool FAKE_WIFI = false; //If true, just load in our test wifi credentials instead of selecting one, false for production
+const bool RESET_SAVED_WIFI = false; //Set to true to reset saved wifi credentials, this should be false in production
 
 // This is for the use case of if wifi just does not work randomly, but still want to develop code
 const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecting
 #define DEBUG_MINUTES false
 
 // Set all of these to false in production to not skip the code
-const bool SKIP_WIFI_SELECTION = true;
-const bool SKIP_WIFI_LOGIN = true;
-const bool SKIP_ADDR_CHOOSE = true;
-const bool SKIP_FIRST_BUS_SELECT = true;
-const bool SKIP_WALKTIME_SET = true;
+const bool SKIP_WIFI_SELECTION = false;
+const bool SKIP_WIFI_LOGIN = false;
+const bool SKIP_ADDR_CHOOSE = false;
+const bool SKIP_FIRST_BUS_SELECT = false;
+const bool SKIP_WALKTIME_SET = false;
 const bool SKIP_INFO_PAGE = false;
 
 // Set all of these to false in production to not reset saved settings
@@ -942,6 +942,36 @@ bool parseTimeString(const String &in, int &outHour, int &outMin) {
 
   outHour = h;
   outMin = m;
+  return true;
+}
+
+
+bool formatTime12(const String &in, String &outStr) {
+  String s = trimStr(in);
+  if (s.length() == 0) return false;
+
+  int colon = s.indexOf(':');
+  if (colon < 0) return false;
+
+  String hstr = trimStr(s.substring(0, colon));
+  String mstr = trimStr(s.substring(colon + 1));
+  if (hstr.length() == 0 || mstr.length() == 0) return false;
+
+  int h24 = hstr.toInt();
+  int m   = mstr.toInt();
+
+  if (h24 < 0 || h24 > 23) return false;
+  if (m < 0 || m > 59) return false;
+
+  bool isPM = (h24 >= 12);
+  int h12 = h24 % 12;
+  if (h12 == 0) h12 = 12;
+
+  char buf[10];
+  snprintf(buf, sizeof(buf), "%d:%02d %s",
+           h12, m, isPM ? "pm" : "am");
+
+  outStr = String(buf);
   return true;
 }
 
@@ -2667,7 +2697,9 @@ void nonBlockingInfoTask(void *pvParameters) {
     if (nextBusTimeStr.length() > 0 ) {
       
     }
-    localLeave += " (Next Bus: " + nextBusTimeStr + ")";
+    String nextBusTimeStr_;
+    formatTime12(nextBusTimeStr, nextBusTimeStr_);
+    localLeave += " (Next Bus: " + nextBusTimeStr_ + ")";
 
 
     
@@ -2973,6 +3005,7 @@ void loop() {
   if (!connected) {
     block_chooseWifi();
     creds = block_wifiLogin();
+    connected = creds.ok;
   }
   
   if ((creds.ok || OVERRIDE_WIFI) && initializeOnce) {
@@ -3049,6 +3082,41 @@ void loop() {
     
     if (!SKIP_INFO_PAGE) {
       block_infoPage();
+    }
+
+    if (pageTracker == "UsefulInfo") {
+      // Instead of changing pages here, we'll just set stuff to null appropiately
+      int settingsId = -1;
+      String text = "";
+      while (settingsId == -1) {
+        // logMessage("Waiting for button press during wifi selection...");
+        settingsId = waitForButtonPress(*nextionSerial, 10000);
+        // logMessage("Button pressed, compId: " + String(compId));
+        // sendCommand("get b" + String(compId) + ".txt"); // get text of button pressed
+        // sendCommand("get " + NO_WIFI_PAGE_MAP[compId] + ".txt");
+        // text = getButtonText(*nextionSerial); // flush any prior response
+      }
+      
+      if (settingsId == 4) { // X
+        safeSetPage("InfoPage");
+      }
+      else if (settingsId == 6) //Change Walk/Bus
+      {
+        /* code */
+        bus = "";
+      }
+      else if (settingsId == 3) // Change Locations
+      {
+        /* code */
+        startAddr = "";
+      }
+      else if (settingsId == 7) // Change Wifi
+      {
+        /* code */
+        connected = false;
+        WiFi.disconnect();
+      }
+      
     }
 
 
