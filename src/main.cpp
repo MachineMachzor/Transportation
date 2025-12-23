@@ -1298,8 +1298,8 @@ bool firstTimeOnInfo = false;
 void safeSetPage(String page) {
   if (pageTracker != page) {
     if (page == "InfoPage"){
-      firstBusOnlySaved = loadStringSetting(CONST_KEYS.firstBusOnly.c_str());
-      sendCommand("c0Unique.val="+ firstBusOnlySaved); //Set the checkbox to the saved value
+      // firstBusOnlySaved = loadStringSetting(CONST_KEYS.firstBusOnly.c_str());
+      // sendCommand("c0Unique.val="+ firstBusOnlySaved); //Set the checkbox to the saved value
       // if (firstBusOnlySaved == "1") {
       //   sendCommand("t11.pco=65535");
       //   sendCommand("t9.pco=65535");
@@ -2590,7 +2590,7 @@ void block_walkTimeBus() {
       // logMessage("Before getting directions, startAddr: " + startAddr + ", endAddr: " + endAddr);
 
       // std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
-
+      
       for(int i = 0; i < MAX_TRANSIT_RESULTS; i++) {
         transitList.push_back("Loading...");
       }
@@ -2659,6 +2659,15 @@ void block_walkTimeBus() {
             sendCommand("t3.txt=\"Error, select transit option\"");
           }
         }
+        //Back button
+        if (compId == 9) {
+          startAddr = "";
+          break;
+        }
+        //Refresh
+        if (compId == 8) {
+          break;
+        }
       }
 
     } else {
@@ -2670,6 +2679,9 @@ void block_walkTimeBus() {
     }
 
     if (!SKIP_WALKTIME_SET) {
+      if (bus.length() == 0) {
+        return;
+      }
       safeSetPage("Walk");
 
       float walkTimeFound = chooseWalkTime();
@@ -2773,7 +2785,7 @@ String getCurrentTimeString(bool spaceBeforeAmPm=true, uint32_t timeoutMs = 1000
 }
 
 
-const TickType_t PASSIVE_INTERVAL = pdMS_TO_TICKS(1000); // run once per minute
+const TickType_t PASSIVE_INTERVAL = pdMS_TO_TICKS(1);//1000); // run once per minute
 
 void nonBlockingInfoTask(void *pvParameters) {
   for (;;) {
@@ -2784,10 +2796,10 @@ void nonBlockingInfoTask(void *pvParameters) {
       firstTimeOnInfo = false;
     }
 
-    // if ((minute_changed_now() || timeOfRefresh.length() == 0) == false) {
-    //   vTaskDelay(PASSIVE_INTERVAL);
-    //   continue;
-    // }
+    if ((minute_changed_now() || timeOfRefresh.length() == 0) == false) {
+      vTaskDelay(PASSIVE_INTERVAL);
+      continue;
+    }
     // Snapshot inputs under mutex (short hold)
     String s_origin_lat, s_origin_lon, s_dest_lat, s_dest_lon;
     float s_walkTime = WALKTIME_NONE, s_miles = WALKTIME_NONE;
@@ -2968,7 +2980,8 @@ void block_infoPage() {
 
   int settingsId = -1;
   String text = "";
-  while (settingsId != 11) {
+  const int SETTING_ID_CONST = 8;
+  while (settingsId != SETTING_ID_CONST) {
     // logMessage("Waiting for button press during wifi selection...");
     settingsId = waitForButtonPress(*nextionSerial, 10000);
     // logMessage("Button pressed, compId: " + String(compId));
@@ -2976,12 +2989,12 @@ void block_infoPage() {
     // sendCommand("get " + NO_WIFI_PAGE_MAP[compId] + ".txt");
     // text = getButtonText(*nextionSerial); // flush any prior response
   }
-  if (settingsId == 11) {
+  if (settingsId == SETTING_ID_CONST) {
     logMessage("Settings button pressed");
-    sendCommand("get c0Unique.val");
-    String firstBusOnlyStrSave = getButtonText(*nextionSerial);
-    firstBusOnlySaved = firstBusOnlyStrSave;
-    saveSetting(CONST_KEYS.firstBusOnly.c_str(), firstBusOnlySaved.c_str());
+    // sendCommand("get c0Unique.val");
+    // String firstBusOnlyStrSave = getButtonText(*nextionSerial);
+    // firstBusOnlySaved = firstBusOnlyStrSave;
+    // saveSetting(CONST_KEYS.firstBusOnly.c_str(), firstBusOnlySaved.c_str());
 
     safeSetPage("UsefulInfo");
     sendCommand("t1.txt=\"Walk Time: " + String(walkTime) + " min\nMiles to First Location: " + String(milesComputeSaved) + " mi\nPreferred Bus: " + bus + "\"");
