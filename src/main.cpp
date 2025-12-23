@@ -926,17 +926,43 @@ int waitForButtonPress(Stream &nx, unsigned long timeoutMs = 10000) {
 }
 
 
-String getButtonText(Stream &nx, unsigned long timeoutMs = 10000) {
+// String getButtonText(Stream &nx, unsigned long timeoutMs = 10000) {
   
-  auto pkt = readNextionPacket(nx, timeoutMs);
-  String text;
-  if (!pkt.empty() && pkt[0] == 0x70) {
-      for (size_t i = 1; i < pkt.size(); i++) {
-          if (pkt[i] == 0xFF) break;
-          text += (char)pkt[i];
-      }
-  }
-  return text;
+//   auto pkt = readNextionPacket(nx, timeoutMs);
+//   String text;
+//   if (!pkt.empty() && pkt[0] == 0x70) {
+//       for (size_t i = 1; i < pkt.size(); i++) {
+//           if (pkt[i] == 0xFF) break;
+//           text += (char)pkt[i];
+//       }
+//   }
+//   return text;
+// }
+
+String getButtonText(Stream &nx, unsigned long timeoutMs = 10000) {
+    auto pkt = readNextionPacket(nx, timeoutMs);
+
+    if (pkt.empty()) {
+        return "";
+    }
+
+    // Text response: 0x70
+    if (pkt[0] == 0x70) {
+        String text;
+        for (size_t i = 1; i < pkt.size(); i++) {
+            if (pkt[i] == 0xFF) break;
+            text += (char)pkt[i];
+        }
+        return text;
+    }
+
+    // Numeric response: 0x71
+    if (pkt[0] == 0x71 && pkt.size() >= 2) {
+        int value = pkt[1];   // 0 or 1 for checkbox
+        return String(value);
+    }
+
+    return "";
 }
 
 
@@ -1268,12 +1294,22 @@ String joinWithNewline(const std::vector<String>& v) {
 
 String firstBusOnlySaved = "1"; //1 == first bus (proclaimed to be the best), 0 == try to find usual bus
 
-
+bool firstTimeOnInfo = false;
 void safeSetPage(String page) {
   if (pageTracker != page) {
-    if (page == "InfoPage") {
+    if (page == "InfoPage"){
       firstBusOnlySaved = loadStringSetting(CONST_KEYS.firstBusOnly.c_str());
-      sendCommand("c0.val=" + firstBusOnlySaved); //Reload saved setting on this page
+      sendCommand("c0Unique.val="+ firstBusOnlySaved); //Set the checkbox to the saved value
+      // if (firstBusOnlySaved == "1") {
+      //   sendCommand("t11.pco=65535");
+      //   sendCommand("t9.pco=65535");
+      //   sendCommand("t8.pco=0");
+      // } else {
+      //   sendCommand("t11.pco=0");
+      //   sendCommand("t9.pco=0");
+      //   sendCommand("t8.pco=65535");
+      // }
+      firstTimeOnInfo = true; //Will be set to false when used
     }
     sendCommand("");
     String cmd = "page " + page;
@@ -2539,7 +2575,7 @@ void block_walkTimeBus() {
   std::vector<String> walkTimeList;
   std::vector<String> walkDistList;
 
-  if (walkTime == WALKTIME_NONE || milesComputeSaved == WALKTIME_NONE || bus.length() == 0 || startAddr.length() == 0 || endAddr.length() == 0) {
+  if (walkTime == WALKTIME_NONE || milesComputeSaved == WALKTIME_NONE || bus.length() == 0) {
     String dist;
     String walk; //Local computed from first bus initially
     // String bus;
@@ -2741,10 +2777,17 @@ const TickType_t PASSIVE_INTERVAL = pdMS_TO_TICKS(1000); // run once per minute
 
 void nonBlockingInfoTask(void *pvParameters) {
   for (;;) {
-    if (!minute_changed_now() && timeOfRefresh.length() != 0) {
-      vTaskDelay(PASSIVE_INTERVAL);
-      continue;
+    String t2Text;
+    if (pageTracker == "InfoPage" && firstTimeOnInfo) {
+      sendCommand("get t2.txt"); //Refresh walk time setting on this page
+      t2Text = getButtonText(*nextionSerial);
+      firstTimeOnInfo = false;
     }
+
+    // if ((minute_changed_now() || timeOfRefresh.length() == 0) == false) {
+    //   vTaskDelay(PASSIVE_INTERVAL);
+    //   continue;
+    // }
     // Snapshot inputs under mutex (short hold)
     String s_origin_lat, s_origin_lon, s_dest_lat, s_dest_lon;
     float s_walkTime = WALKTIME_NONE, s_miles = WALKTIME_NONE;
@@ -2783,11 +2826,36 @@ void nonBlockingInfoTask(void *pvParameters) {
     bool updated = false;
 
     int targetHour = 0, targetMin = 0;
+    // if (pageTracker == "InfoPage") {
+    //   // firstBusOnlySaved = loadStringSetting(CONST_KEYS.firstBusOnly.c_str());
+    //   sendCommand("get c0Unique.val"); //Reload saved setting on this page
+    //   firstBusOnlySaved = getButtonText(*nextionSerial);
+    //   saveSetting(CONST_KEYS.firstBusOnly.c_str(), firstBusOnlySaved.c_str());
+
+    //   // if (usingBestBusStr != firstBusOnlySaved) {
+    //   //   firstBusOnlySaved = usingBestBusStr;
+    //   //   saveSetting(CONST_KEYS.firstBusOnly.c_str(), firstBusOnlySaved ? "1" : "0");
+    //   //   logMessage("firstBusOnly setting changed to " + String(firstBusOnlySaved ? "true" : "false"));
+
+    //   // }
+
+
+    // }
     
     parseTimeString(localRefresh, targetHour, targetMin);
     String comparisonTime = String(targetHour) + ":" + String(targetMin);
     String nextBusTimeStr;
     if (n.size() > 0) {
+      // if (firstBusOnlySaved == "0") {
+      //   // Find the first bus that is at least walk time away
+      //   for (size_t i = 0; i < n.size(); ++i) {
+      //     if (n[i].busLabel == bus) {
+      //       // use this bus
+      //       n[0] = n[i];
+      //       break;
+      //     }
+      //   }
+      // }
       // String utcTimeNow = getCurrentTimeString(); // or getTimeNowUTC() if you have it
       nextBusTimeStr = n[0].nextBusTime;
       String nextBusTimeStr_;
@@ -2855,7 +2923,7 @@ void nonBlockingInfoTask(void *pvParameters) {
 
 void block_infoPage() {
   safeSetPage("InfoPage");
-  sendCommand("t9.txt=\"(Unchecked Tries " + bus + ")\""); //Immediately specify saved bus
+  
 
   // Ideally call this without blocking
   // nonBlockingInfoCall();
@@ -2873,7 +2941,23 @@ void block_infoPage() {
     sendCommand("t4.txt=\"" + uiBus + "\"");
     sendCommand("t7.txt=\"" + uiLocation + "\"");
     sendCommand("t10=\"" + uiRefresh + "\"");
+    sendCommand("c0Unique.val="+firstBusOnlySaved); //Reload saved setting on this page
+    // if (firstBusOnlySaved == "1") {
+    //   sendCommand("t11.pco=65535");
+    //   sendCommand("t9.pco=65535");
+    //   sendCommand("t8.pco=0");
+    // } else {
+    //   sendCommand("t11.pco=0");
+    //   sendCommand("t9.pco=0");
+    //   sendCommand("t8.pco=65535");
+    // }
   }
+
+  // if (!firstBusOnlySaved) {
+  //   sendCommand("t9.txt=\"(Trying " + bus + ")\""); //Immediately specify saved bus
+  // }
+
+  // sendCommand("t9.txt=\"" + bus + "\"");
   
 
   // if (minute_changed_now()) {
@@ -2894,9 +2978,15 @@ void block_infoPage() {
   }
   if (settingsId == 11) {
     logMessage("Settings button pressed");
+    sendCommand("get c0Unique.val");
+    String firstBusOnlyStrSave = getButtonText(*nextionSerial);
+    firstBusOnlySaved = firstBusOnlyStrSave;
+    saveSetting(CONST_KEYS.firstBusOnly.c_str(), firstBusOnlySaved.c_str());
+
     safeSetPage("UsefulInfo");
     sendCommand("t1.txt=\"Walk Time: " + String(walkTime) + " min\nMiles to First Location: " + String(milesComputeSaved) + " mi\nPreferred Bus: " + bus + "\"");
     sendCommand("t5.txt=\"Start Location: " + startAddr + "\nEnd Location: " + endAddr + "\"");
+    
     // block_chooseAddress();
     // block_walkTimeBus();
     // safeSetPage("InfoPage");
@@ -3084,6 +3174,14 @@ void setup() {
   // int PLACE_MAX = 3;
   // std::vector<placeIdentifier> placesDebug = getPlaces("620 liberty ave", placesStart, PLACE_MAX, c.lat, c.lon, true);
   
+
+  // TESTING
+  // safeSetPage("InfoPage");
+  // sendCommand("get c0Unique.val"); //Reload saved setting on this page
+  // String usingBestBusStr = getButtonText(*nextionSerial);
+  // bool usingBestBus = (usingBestBusStr == "01") ? true : false;
+  // logMessage("usingBestBusStr: " + usingBestBusStr);
+
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
   server.begin();
@@ -3154,7 +3252,6 @@ void loop() {
       startNonBlockingInfoTask();
       initializeOnce = false;
     }
-    if (startAddr.length() == 0 || endAddr.length() == 0) {
 
       
       // SEARCH QUERY SEQUENCE
@@ -3168,39 +3265,40 @@ void loop() {
       
       
       
-      if (!SKIP_ADDR_CHOOSE) {
-        if (startAddr.length() == 0 || endAddr.length() == 0 ||
-            origin_lat.length() == 0 || origin_lon.length() == 0 ||
-            dest_lat.length() == 0 || dest_lon.length() == 0) {
-          
-          block_chooseAddress();
-          logMessage("Chosen addresses, startAddr: " + startAddr + ", endAddr: " + endAddr + ", origin_lat: " + origin_lat + ", origin_lon: " + origin_lon + ", dest_lat: " + dest_lat + ", dest_lon: " + dest_lon);
-
-        }
+    if (!SKIP_ADDR_CHOOSE) {
+      if (startAddr.length() == 0 || endAddr.length() == 0 ||
+          origin_lat.length() == 0 || origin_lon.length() == 0 ||
+          dest_lat.length() == 0 || dest_lon.length() == 0) {
         
-        // logMessage("Chosen addresses, startAddr: " + startAddr + ", endAddr: " + endAddr + ", origin_lat: " + origin_lat + ", origin_lon: " + origin_lon + ", dest_lat: " + dest_lat + ", dest_lon: " + dest_lon);
-      } else {
-        // logMessage("SKIP_ADDR_CHOOSE set, using prior addresses");
-        // startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
-        // endAddr = "Two PNC Plaza, Pittsburgh, PA 15222";
-        // // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
-        // origin_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
-        // origin_lon = "-79.921356";
-        // dest_lat = "40.442115"; //Two PNC Plaza, Pittsburgh, PA 15222
-        // dest_lon = "-80.000915";
+        block_chooseAddress();
+        logMessage("Chosen addresses, startAddr: " + startAddr + ", endAddr: " + endAddr + ", origin_lat: " + origin_lat + ", origin_lon: " + origin_lon + ", dest_lat: " + dest_lat + ", dest_lon: " + dest_lon);
+
+      }
+      
+      // logMessage("Chosen addresses, startAddr: " + startAddr + ", endAddr: " + endAddr + ", origin_lat: " + origin_lat + ", origin_lon: " + origin_lon + ", dest_lat: " + dest_lat + ", dest_lon: " + dest_lon);
+    } else {
+      // logMessage("SKIP_ADDR_CHOOSE set, using prior addresses");
+      // startAddr = "434 Shady Ave, Pittsburgh, PA 15206";
+      // endAddr = "Two PNC Plaza, Pittsburgh, PA 15222";
+      // // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
+      // origin_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+      // origin_lon = "-79.921356";
+      // dest_lat = "40.442115"; //Two PNC Plaza, Pittsburgh, PA 15222
+      // dest_lon = "-80.000915";
 
 
-        startAddr = test_start_addr;
-        endAddr = test_end_addr;
-        origin_lat = origin_test_lat;
-        origin_lon = origin_test_lon;
-        dest_lat = dest_test_lat;
-        dest_lon = dest_test_lon;
-      }
-      if (walkTime == WALKTIME_NONE || milesComputeSaved == WALKTIME_NONE || bus.length() == 0) {
-        block_walkTimeBus();
-      }
+      startAddr = test_start_addr;
+      endAddr = test_end_addr;
+      origin_lat = origin_test_lat;
+      origin_lon = origin_test_lon;
+      dest_lat = dest_test_lat;
+      dest_lon = dest_test_lon;
     }
+
+    if (walkTime == WALKTIME_NONE || milesComputeSaved == WALKTIME_NONE || bus.length() == 0) {
+      block_walkTimeBus();
+    }
+  
 
     
     
@@ -3229,6 +3327,21 @@ void loop() {
       
       if (settingsId == 4) { // X
         safeSetPage("InfoPage");
+        sendCommand("t2.txt=\"" + leaveMsg + "\"");
+        sendCommand("t4.txt=\"" + busUsed + "\"");
+        sendCommand("t7.txt=\"" + firstLocation + "\"");
+        sendCommand("t10.txt=\"" + timeOfRefresh + "\"");
+        sendCommand("c0Unique.val="+firstBusOnlySaved); //Reload saved setting on this page
+        
+        // if (firstBusOnlySaved == "1") {
+        //   sendCommand("t11.pco=0");
+        //   sendCommand("t9.pco=0");
+        //   sendCommand("t8.pco=65535");
+        // } else {
+        //   sendCommand("t11.pco=65535");
+        //   sendCommand("t9.pco=65535");
+        //   sendCommand("t8.pco=0");
+        // }
       }
       else if (settingsId == 6) //Change Walk/Bus
       {
