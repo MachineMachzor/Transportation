@@ -90,10 +90,10 @@ char* passwordTest = "bimshire";
 // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQTFXc01kOVVpS05GS3I5QlMtR0c0bkQlM0FDZ2NJQkNDU3Blb2pFQUVhQkRNeE1UYztsYXQ9NDAuODEzMzY7bG9uPS03My45NjAzMztuPTMxMTclMjBCcm9hZHdheSUyQyUyME5ldyUyMFlvcmslMkMlMjBOWSUyMDEwMDI3LTQ2MDklMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQVVNbHlLT1k3cUwyYXlFcUNQaGtXNEElM0FDZ2NJQkNET3lla2pFQUVhQkRJeU9EYztsYXQ9NDAuNzk3MTM7bG9uPS03My45MzQ4MTtuPTIyODclMjAxc3QlMjBBdmUlMkMlMjBOZXclMjBZb3JrJTJDJTIwTlklMjAxMDAzNS01MDU3JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==?map=40.80492,-73.94577,14.45
 String test_start_addr = "3117 Broadway, New York, NY 10027";
 String test_end_addr = "2287 1st Ave, New York, NY 10035";
-String origin_test_lat = "40.8134337"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
-String origin_test_lon = "-73.9630156";
-String dest_test_lat = "40.8041624"; //Two PNC Plaza
-String dest_test_lon = "-73.9569643";
+String origin_test_lat = "40.81336"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+String origin_test_lon = "-73.96033";
+String dest_test_lat = "40.79713"; //Two PNC Plaza
+String dest_test_lon = "-73.93481";
 
 
 
@@ -195,6 +195,42 @@ std::map<int, String> TRANSIT_BUSES = {
 
 int ADDR_CONTINUE_ID = 3;
 
+bool isHexChar(char c) {
+    return (c >= '0' && c <= '9') ||
+           (c >= 'a' && c <= 'f') ||
+           (c >= 'A' && c <= 'F');
+}
+
+bool isFourCharHex(const String& s) {
+    if (s.length() != 4) return false;
+    for (int i = 0; i < 4; i++) {
+        if (!isHexChar(s[i])) return false;
+    }
+    return true;
+}
+
+String cleanChunkedJSON(const String& raw) {
+    String cleaned = "";
+    int start = 0;
+
+    while (true) {
+        int end = raw.indexOf('\n', start);
+        if (end == -1) break;
+
+        String line = raw.substring(start, end);
+        line.trim();
+
+        // Skip lines like "2f22", "14e8", etc.
+        if (!isFourCharHex(line)) {
+            cleaned += line + "\n";
+        }
+
+        start = end + 1;
+    }
+
+    return cleaned;
+
+}
 
 
 const String HOME_PAGE_START_TXT = "t2"; //User inputted start
@@ -367,6 +403,34 @@ struct BoardingInfo {
   bool valid = false;
 };
 
+
+String addOneMinute(const String& timeStr) {
+    // Expecting format "HH:MM"
+    int colonIndex = timeStr.indexOf(':');
+    if (colonIndex == -1) return timeStr;  // invalid format, return unchanged
+
+    int hour = timeStr.substring(0, colonIndex).toInt();
+    int minute = timeStr.substring(colonIndex + 1).toInt();
+
+    // Add one minute
+    minute++;
+
+    // Handle rollover
+    if (minute >= 60) {
+        minute = 0;
+        hour++;
+        if (hour >= 24) {
+            hour = 0;
+        }
+    }
+
+    // Rebuild the string with leading zeros
+    char buffer[6];
+    snprintf(buffer, sizeof(buffer), "%02d:%02d", hour, minute);
+
+    return String(buffer);
+}
+
 // Helper: extract HH:MM from an ISO timestamp like "2025-12-13T13:33:00-05:00" --> This gets turned into 13:33
 static String isoToHHMM(const String &iso) {
   if (iso.length() < 16) return iso;
@@ -472,6 +536,7 @@ size_t parseAllFirstBoardingInfos(const String &jsonPart, std::vector<BoardingIn
           }
           if (departure.containsKey("time")) {
             bi.nextBusTime = isoToHHMM(String(departure["time"].as<const char*>()));
+            // addOneMinute(bi.nextBusTime); // adjust for processing delay
           }
         }
 
@@ -642,19 +707,27 @@ std::vector<BoardingInfo> httpGetDirections(String origin_lat, String origin_lon
   int httpCode = https.GET();
   String result = "";
 
+  // if (httpCode > 0 && httpCode == HTTP_CODE_OK) {
+  //   WiFiClient *stream = https.getStreamPtr();
+  //   const size_t bufSize = 512;
+  //   uint8_t buf[bufSize];
+  //   // read until connection closed
+  //   while (https.connected() || stream->available()) {
+  //     if (stream->available()) {
+  //       size_t len = stream->readBytes(buf, bufSize);
+  //       result += String((char*)buf, len);
+  //     } else {
+  //       delay(1);
+  //     }
+  //   }
+  // } else {
+  //   dbgSerial->printf("HTTP GET failed, code: %d, err: %s\n", httpCode, https.errorToString(httpCode).c_str());
+  // }
+
   if (httpCode > 0 && httpCode == HTTP_CODE_OK) {
-    WiFiClient *stream = https.getStreamPtr();
-    const size_t bufSize = 512;
-    uint8_t buf[bufSize];
-    // read until connection closed
-    while (https.connected() || stream->available()) {
-      if (stream->available()) {
-        size_t len = stream->readBytes(buf, bufSize);
-        result += String((char*)buf, len);
-      } else {
-        delay(1);
-      }
-    }
+    
+    result = https.getString();
+
   } else {
     dbgSerial->printf("HTTP GET failed, code: %d, err: %s\n", httpCode, https.errorToString(httpCode).c_str());
   }
@@ -2042,19 +2115,13 @@ std::vector<placeIdentifier> getPlaces(String searchQuery, Place places[], int m
   client->setInsecure(); // for testing only
   HTTPClient https;
   
-
- 
-  
   // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&gl=us&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=" + searchQuery + "&ech=3&pb=!2i13!4m12!1m3!1d14611.795576010498!2d-79.93046255!3d40.44832804999999!2m3!1f0!2f0!3f0!3m2!1i815!2i924!4f13.1!7i20!10b1!12m25!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!19m4!2m3!1i360!2i120!4i8!20m57!2m2!1i203!2i100!3m2!2i4!5b1!6m6!1m2!1i86!2i86!1m2!1i408!2i240!7m33!1m3!1e1!2b0!3e3!1m3!1e2!2b1!3e2!1m3!1e2!2b0!3e3!1m3!1e8!2b0!3e3!1m3!1e10!2b0!3e3!1m3!1e10!2b1!3e2!1m3!1e10!2b0!3e4!1m3!1e9!2b1!3e2!2b1!9b0!15m8!1m7!1m2!1m1!1e2!2m2!1i195!2i195!3i20!22m3!1sURMlaa7DOpPe5NoP99fnkQY!7e81!17sURMlaa7DOpPe5NoP99fnkQY%3A63!23m2!4b1!10b1!24m109!1m30!13m9!2b1!3b1!4b1!6i1!8b1!9b1!14b1!20b1!25b1!18m19!3b1!4b1!5b1!6b1!9b1!13b1!14b1!17b1!20b1!21b1!22b1!27m1!1b0!28b0!32b1!33m1!1b1!34b1!36e2!10m1!8e3!11m1!3e1!14m1!3b0!17b1!20m2!1e3!1e6!24b1!25b1!26b1!27b1!29b1!30m1!2b1!36b1!37b1!39m3!2m2!2i1!3i1!43b1!52b1!54m1!1b1!55b1!56m1!1b1!61m2!1m1!1e1!65m5!3m4!1m3!1m2!1i224!2i298!72m22!1m8!2b1!5b1!7b1!12m4!1b1!2b1!4m1!1e1!4b1!8m10!1m6!4m1!1e1!4m1!1e3!4m1!1e4!3sother_user_google_review_posts__and__hotel_and_vr_partner_review_posts!6m1!1e1!9b1!89b1!98m3!1b1!2b1!3b1!103b1!113b1!114m3!1b1!2m1!1b1!117b1!122m1!1b1!126b1!127b1!26m4!2m3!1i80!2i92!4i8!34m19!2b1!3b1!4b1!6b1!8m6!1b1!3b1!4b1!5b1!6b1!7b1!9b1!12b1!14b1!20b1!23b1!25b1!26b1!31b1!37m1!1e81!47m0!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i760";
   // String url = "https://www.google.com/s?tbm=map&gs_ri=maps&suggest=p&authuser=0&hl=en&psi=Avghab7tBdbV5NoP9PqxgQ0.1763833866758.1&q=" + searchQuery + "&ech=3";
   // url = setPbCenter(url, newLat, newLong); //NYC coords for testing
 
-
-
   String url = "https://autosuggest.search.hereapi.com/v1/autosuggest?xnlp=CL_JSMv3.2.0.0&apikey=" + apiKey + "&at=" + newLat + "%2C" + newLong + "&lang=en-US&limit=5&q=" + searchQuery;
   // String url = "https://autosuggest.search.hereapi.com/v1/autosuggest?xnlp=CL_JSMv3.2.0.0&apikey=t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU&at=40.44865%2C-79.96352&lang=en-US&limit=5&q=43%204%20g%2C";
   https.begin(*client, url);
-
   https.addHeader("User-Agent", "ESP32/1.0");
   https.addHeader("Accept", "*/*");
   https.addHeader("Accept-Language", "en-US,en;q=0.9");
@@ -2067,18 +2134,7 @@ std::vector<placeIdentifier> getPlaces(String searchQuery, Place places[], int m
   String body = "";
 
   if (httpCode > 0 && httpCode == HTTP_CODE_OK) {
-    WiFiClient *stream = https.getStreamPtr();
-    const size_t bufSize = 512;
-    uint8_t buf[bufSize];
-    // read until connection closed
-    while (https.connected() || stream->available()) {
-      if (stream->available()) {
-        size_t len = stream->readBytes(buf, bufSize);
-        body += String((char*)buf, len);
-      } else {
-        delay(1);
-      }
-    }
+    body = https.getString();
   } else {
     dbgSerial->printf("HTTP GET failed, code: %d, err: %s\n", httpCode, https.errorToString(httpCode).c_str());
   }
@@ -2667,10 +2723,15 @@ String getCurrentTimeString(bool spaceBeforeAmPm=true, uint32_t timeoutMs = 1000
     return String(buf);
 }
 
+
 const TickType_t PASSIVE_INTERVAL = pdMS_TO_TICKS(1000); // run once per minute
 
 void nonBlockingInfoTask(void *pvParameters) {
   for (;;) {
+    if (!minute_changed_now()) {
+      vTaskDelay(PASSIVE_INTERVAL);
+      continue;
+    }
     // Snapshot inputs under mutex (short hold)
     String s_origin_lat, s_origin_lon, s_dest_lat, s_dest_lon;
     float s_walkTime = WALKTIME_NONE, s_miles = WALKTIME_NONE;
@@ -2725,7 +2786,7 @@ void nonBlockingInfoTask(void *pvParameters) {
       localBus = n[0].busLabel;
       localLocation = n[0].stationName;
       float relativeNewWalkTime = newWalkTime(s_walkTime, s_miles, walkDistNew);
-      dbgSerial->println("relativeNewWalkTime: " + String(relativeNewWalkTime) + " diffTimeMin: " + String(diffTimeMin) + " s_walkTime: " + String(s_walkTime) + " s_miles: " + String(s_miles) + " walkDistNew: " + String(walkDistNew) + " localRefresh: " + localRefresh + " nextBusTimeStr: " + nextBusTimeStr +  "nextBusTimeStr_: " + nextBusTimeStr_ +  " comparisonTime: " + comparisonTime);
+      dbgSerial->println("relativeNewWalkTime: " + String(relativeNewWalkTime) + " diffTimeMin: " + String(diffTimeMin) + " s_walkTime: " + String(s_walkTime) + " s_miles: " + String(s_miles) + " walkDistNew: " + String(walkDistNew) + " localRefresh: " + localRefresh + " nextBusTimeStr: " + nextBusTimeStr +  " nextBusTimeStr_: " + nextBusTimeStr_ +  " comparisonTime: " + comparisonTime);
       float timeToLeaveFloat = diffTimeMin - relativeNewWalkTime;
       int timeToLeave = roundf(timeToLeaveFloat);
       if (timeToLeave < 0) {
