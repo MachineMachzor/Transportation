@@ -31,8 +31,8 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = true;//If false, should be production nextion
-const bool FAKE_WIFI = false; //If true, just load in our test wifi credentials instead of selecting one, false for production
+const bool TESTING_NEXTION = false;//If false, should be production nextion
+const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one, false for production
 const bool RESET_SAVED_WIFI = false; //Set to true to reset saved wifi credentials, this should be false in production
 
 // This is for the use case of if wifi just does not work randomly, but still want to develop code
@@ -40,12 +40,12 @@ const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecti
 #define DEBUG_MINUTES false
 
 // Set all of these to false in production to not skip the code
-const bool SKIP_WIFI_SELECTION = false;
-const bool SKIP_WIFI_LOGIN = false;
-const bool SKIP_ADDR_CHOOSE = false;
-const bool SKIP_FIRST_BUS_SELECT = false;
-const bool SKIP_WALKTIME_SET = false;
-const bool SKIP_INFO_PAGE = false;
+const bool SKIP_WIFI_SELECTION = true;
+const bool SKIP_WIFI_LOGIN = true;
+const bool SKIP_ADDR_CHOOSE = true;
+const bool SKIP_FIRST_BUS_SELECT = true;
+const bool SKIP_WALKTIME_SET = true;
+const bool SKIP_INFO_PAGE = true;
 
 // Set all of these to false in production to not reset saved settings
 const bool RESET_SAVED_ADDRS = false;
@@ -83,8 +83,36 @@ bool currentPageCall = false; //If true, called the page once
 // #include <HTTPClient.h>
 
 // For testing
-char* ssidTest     = "Pixel_4976";
-char* passwordTest = "abcdefgh"; 
+char* ssidTest     = "googRouter";
+char* passwordTest = "bimshire"; 
+
+
+// https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQTFXc01kOVVpS05GS3I5QlMtR0c0bkQlM0FDZ2NJQkNDU3Blb2pFQUVhQkRNeE1UYztsYXQ9NDAuODEzMzY7bG9uPS03My45NjAzMztuPTMxMTclMjBCcm9hZHdheSUyQyUyME5ldyUyMFlvcmslMkMlMjBOWSUyMDEwMDI3LTQ2MDklMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQVVNbHlLT1k3cUwyYXlFcUNQaGtXNEElM0FDZ2NJQkNET3lla2pFQUVhQkRJeU9EYztsYXQ9NDAuNzk3MTM7bG9uPS03My45MzQ4MTtuPTIyODclMjAxc3QlMjBBdmUlMkMlMjBOZXclMjBZb3JrJTJDJTIwTlklMjAxMDAzNS01MDU3JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==?map=40.80492,-73.94577,14.45
+String test_start_addr = "3117 Broadway, New York, NY 10027";
+String test_end_addr = "2287 1st Ave, New York, NY 10035";
+String origin_test_lat = "40.8134337"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+String origin_test_lon = "-73.9630156";
+String dest_test_lat = "40.8041624"; //Two PNC Plaza
+String dest_test_lon = "-73.9569643";
+
+
+
+/*
+startAddr = "434 Shady Ave, Pittsburgh, PA 15206-4455, United States";
+endAddr = "620 Liberty Ave, Pittsburgh (Pitt), PA 15222-2705, United States";
+origin_lat = "40.454590"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+origin_lon = "-79.922127";
+dest_lat = "40.441807"; //Two PNC Plaza, Pittsburgh, PA 15222
+dest_lon = "-80.000832";
+
+
+// https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
+String origin_test_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+String origin_test_lon = "-79.921356";
+String dest_test_lat = "40.442115"; //Two PNC Plaza
+String dest_test_lon = "-80.000915";
+
+*/
 
 
 struct WifiCredentials {
@@ -2102,12 +2130,20 @@ float newWalkTime(float oldWalkTime, float oldMiles, float newMiles) {
   return newWalkTime;
 }
 
+
+float walkTime = WALKTIME_NONE;
+float milesComputeSaved = WALKTIME_NONE;
+String bus = "";
+int reloadAttempt = 0;
+
+
 int chooseWalkTime() {
   float walkTime = WALKTIME_NONE;
   String walkText;
   String lastMsg = "";
   String newMsg = "";
   bool goodWalkTime = false;
+  sendCommand("t1.txt=\"Enter walk time in minutes (e.g.. 15) to the " + bus + " or leave blank.\"");
   while(true) {
     goodWalkTime = false;
     sendCommand("get t2.txt");
@@ -2175,9 +2211,9 @@ struct chooseAddressStruct {
   String lat;
   String lon;
 };
+int PLACE_MAX = 3;
 
 chooseAddressStruct chooseAddress() {
-  int PLACE_MAX = 3;
   std::vector<placeIdentifier> startPlacesSearch;
   std::vector<String> startPlacesSearch_;
   chooseAddressStruct chooseAddressReturn;
@@ -2210,6 +2246,10 @@ chooseAddressStruct chooseAddress() {
           startPlacesSearch_.push_back(startPlacesSearch[i].place);
           // logMessage("Place " + String(i) + ": " + startPlacesSearch[i].place);
         }
+        int remaining = PLACE_MAX - startPlacesSearch.size();
+        for (int i = 0; i < remaining; ++i) {
+          startPlacesSearch_.push_back("");
+        }
         sendComponentTxt(PLACE_MAX, 100, startPlacesSearch_, "b", false, 1);
       }
       
@@ -2223,7 +2263,7 @@ chooseAddressStruct chooseAddress() {
       // sendCommand("get b" + String(compId) + ".txt"); // get text of button pressed
       sendCommand("get " + ADDR_PAGES[compId] + ".txt");
       String text = getButtonText(*nextionSerial); // flush any prior response
-        if (text.length() > 0) {
+        if (text.length() > 0 && text != "Loading...") {
           chosenStart = text;
           String forLog = appendChosen + chosenStart;
           // int index = indexOf(startPlacesSearch_, chosenStart);
@@ -2424,10 +2464,6 @@ WifiCredentials block_wifiLogin() {
   return creds;
 }
 
-float walkTime = WALKTIME_NONE;
-float milesComputeSaved = WALKTIME_NONE;
-String bus = "";
-int reloadAttempt = 0;
 
 void block_walkTimeBus() {
   std::vector<String> transitList;
@@ -2450,7 +2486,17 @@ void block_walkTimeBus() {
 
       // std::vector<BoardingInfo> n = getDirections(startAddr, endAddr, c.lat, c.lon);
 
-      std::vector<BoardingInfo> n = httpGetDirections(origin_lat, origin_lon, dest_lat, dest_lon, false);
+      for(int i = 0; i < MAX_TRANSIT_RESULTS; i++) {
+        transitList.push_back("Loading...");
+      }
+      sendComponentTxt(MAX_TRANSIT_RESULTS, 10, transitList, "b", false, 0);
+      transitList.clear();
+      
+      std::vector<BoardingInfo> n;
+      while(n.empty()) {
+        n = httpGetDirections(origin_lat, origin_lon, dest_lat, dest_lon, false);
+      }
+      
 
       
       for (int i = 0; i < n.size(); ++i) {
@@ -2544,6 +2590,7 @@ void block_walkTimeBus() {
     }
   }
 }
+
 // String 
 String leaveMsg = "Computing Minutes...";
 String busUsed = "Computing Transport...";
@@ -2669,13 +2716,16 @@ void nonBlockingInfoTask(void *pvParameters) {
     if (n.size() > 0) {
       // String utcTimeNow = getCurrentTimeString(); // or getTimeNowUTC() if you have it
       nextBusTimeStr = n[0].nextBusTime;
+      String nextBusTimeStr_;
+      formatTime12(nextBusTimeStr, nextBusTimeStr_);
+      localLeave += " (Next Bus: " + nextBusTimeStr_ + ")";
       float walkDistNew = n[0].walkDistance.toFloat();
       // int diffTimeMin = minutesDifferenceFromEpochMs(comparisonTime, nextBusTimeStr.c_str());
       int diffTimeMin = minutesDifferenceHHMM(comparisonTime, nextBusTimeStr);
       localBus = n[0].busLabel;
       localLocation = n[0].stationName;
       float relativeNewWalkTime = newWalkTime(s_walkTime, s_miles, walkDistNew);
-      dbgSerial->println("relativeNewWalkTime: " + String(relativeNewWalkTime) + " diffTimeMin: " + String(diffTimeMin) + " s_walkTime: " + String(s_walkTime) + " s_miles: " + String(s_miles) + " walkDistNew: " + String(walkDistNew) + " localRefresh: " + localRefresh + " nextBusTimeStr: " + nextBusTimeStr + " comparisonTime: " + comparisonTime);
+      dbgSerial->println("relativeNewWalkTime: " + String(relativeNewWalkTime) + " diffTimeMin: " + String(diffTimeMin) + " s_walkTime: " + String(s_walkTime) + " s_miles: " + String(s_miles) + " walkDistNew: " + String(walkDistNew) + " localRefresh: " + localRefresh + " nextBusTimeStr: " + nextBusTimeStr +  "nextBusTimeStr_: " + nextBusTimeStr_ +  " comparisonTime: " + comparisonTime);
       float timeToLeaveFloat = diffTimeMin - relativeNewWalkTime;
       int timeToLeave = roundf(timeToLeaveFloat);
       if (timeToLeave < 0) {
@@ -2694,12 +2744,10 @@ void nonBlockingInfoTask(void *pvParameters) {
       // localLocation = "N/A";
       // increment reloadAttempt under mutex if needed
     }
-    if (nextBusTimeStr.length() > 0 ) {
+    // if (nextBusTimeStr.length() > 0 ) {
       
-    }
-    String nextBusTimeStr_;
-    formatTime12(nextBusTimeStr, nextBusTimeStr_);
-    localLeave += " (Next Bus: " + nextBusTimeStr_ + ")";
+    // }
+    
 
 
     
@@ -2732,7 +2780,7 @@ void nonBlockingInfoTask(void *pvParameters) {
 
 void block_infoPage() {
   safeSetPage("InfoPage");
-  sendCommand("t9.txt=\"(Unchecked Uses " + bus + " If Available)\""); //Immediately specify saved bus
+  sendCommand("t9.txt=\"(Unchecked Tries " + bus + "\""); //Immediately specify saved bus
 
   // Ideally call this without blocking
   // nonBlockingInfoCall();
@@ -2896,6 +2944,11 @@ void setup() {
   milesComputeSaved = loadStringSetting(CONST_KEYS.milesCompute.c_str()).toFloat();
   bus = loadStringSetting(CONST_KEYS.bus.c_str()); //Tries for this bus, otherwise it will just default to the first one found, able to also turn off this setting
   firstBusOnlySaved = loadStringSetting(CONST_KEYS.firstBusOnly.c_str());
+  origin_lat = loadStringSetting(CONST_KEYS.origin_lat.c_str());
+  origin_lon = loadStringSetting(CONST_KEYS.origin_lon.c_str());
+  dest_lat = loadStringSetting(CONST_KEYS.dest_lat.c_str());
+  dest_lon = loadStringSetting(CONST_KEYS.dest_lon.c_str());
+
 
   logMessage("Loaded walkTime : " + String(walkTime) + ", milesComputeSaved: " + String(milesComputeSaved) + ", bus: " + bus + ", firstBusOnlySaved: " + firstBusOnlySaved);
   logMessage("Walktime equals WALKTIME_NONE? " + String(walkTime == WALKTIME_NONE ? "true" : "false"));
@@ -2938,10 +2991,10 @@ void setup() {
 
 
   // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
-  String origin_test_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
-  String origin_test_lon = "-79.921356";
-  String dest_test_lat = "40.442115"; //Two PNC Plaza
-  String dest_test_lon = "-80.000915";
+  // String origin_test_lat = "40.453953"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
+  // String origin_test_lon = "-79.921356";
+  // String dest_test_lat = "40.442115"; //Two PNC Plaza
+  // String dest_test_lon = "-80.000915";
 
   // startAddr = "434 Fifth Avenue, Pittsburgh, PA";
   // endAddr = "Two PNC Plaza, Liberty Avenue, Pittsburgh, PA";
@@ -2949,7 +3002,7 @@ void setup() {
   // origin_lon = "-79.998337";
   // dest_lat = "40.441891"; //Two PNC Plaza, Pittsburgh, PA 15222
   // dest_lon = "-80.000656";
-  // std::vector<BoardingInfo> infos = httpGetDirections(origin_test_lat, origin_test_lon, dest_test_lat, dest_test_lon, true);
+  std::vector<BoardingInfo> infos = httpGetDirections(origin_test_lat, origin_test_lon, dest_test_lat, dest_test_lon, true);
   // dbgSerial->println("-----");
   // getPlaces
 
@@ -3002,17 +3055,15 @@ void loop() {
   // logMessage(getCurrentTimeString() + " - time print test");
   // delay(1000);
 
-  if (!connected) {
-    block_chooseWifi();
-    creds = block_wifiLogin();
-    connected = creds.ok;
-  }
+  // if (!connected) {
+    
+  // }
   
-  if ((creds.ok || OVERRIDE_WIFI) && initializeOnce) {
-    String msgLog = OVERRIDE_WIFI ? "OVERRIDE_WIFI set, starting setup sequence" : "WiFi connected successfully, starting setup sequence";
-
-    logMessage(msgLog);
-    if (creds.ok) {
+  if ((creds.ok || OVERRIDE_WIFI)) {
+    
+    if (initializeOnce && creds.ok) {
+      String msgLog = OVERRIDE_WIFI ? "OVERRIDE_WIFI set, starting setup sequence" : "WiFi connected successfully, starting setup sequence";
+      logMessage(msgLog);
       c = getCurrentLocation();
       String userTimezone = getUserTimezone();
       const char* posix = iana_to_posix(userTimezone.c_str());
@@ -3027,7 +3078,6 @@ void loop() {
       // tzset();
       startNonBlockingInfoTask();
       initializeOnce = false;
-
     }
     if (startAddr.length() == 0 || endAddr.length() == 0) {
 
@@ -3065,23 +3115,28 @@ void loop() {
         // dest_lon = "-80.000915";
 
 
-        // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.45016,-79.96139,13.63
-        startAddr = "434 Shady Ave, Pittsburgh, PA 15206-4455, United States";
-        endAddr = "620 Liberty Ave, Pittsburgh (Pitt), PA 15222-2705, United States";
-        origin_lat = "40.454590"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
-        origin_lon = "-79.922127";
-        dest_lat = "40.441807"; //Two PNC Plaza, Pittsburgh, PA 15222
-        dest_lon = "-80.000832";
+        startAddr = test_start_addr;
+        endAddr = test_end_addr;
+        origin_lat = origin_test_lat;
+        origin_lon = origin_test_lon;
+        dest_lat = dest_test_lat;
+        dest_lon = dest_test_lon;
       }
       if (walkTime == WALKTIME_NONE || milesComputeSaved == WALKTIME_NONE || bus.length() == 0) {
         block_walkTimeBus();
       }
     }
 
-
+    
     
     if (!SKIP_INFO_PAGE) {
-      block_infoPage();
+      if (walkTime != WALKTIME_NONE && milesComputeSaved != WALKTIME_NONE && startAddr.length() > 0 && endAddr.length() > 0 && bus.length() > 0) {
+        block_infoPage();
+      }
+      else {
+        logMessage("Skipping InfoPage block, incomplete settings. walkTime: " + String(walkTime) + ", milesComputeSaved: " + String(milesComputeSaved) + ", startAddr: " + startAddr + ", endAddr: " + endAddr + ", bus: " + bus);
+
+      }
     }
 
     if (pageTracker == "UsefulInfo") {
@@ -3144,9 +3199,12 @@ void loop() {
     //   dbgSerial->printf("%d) %s -> %f, %f\n", i+1, places[i].name.c_str(), places[i].lat, places[i].lon);
     // }
   } else {
-    logMessage("Wi-Fi not connected");
+    // logMessage("Wi-Fi not connected");
     // sendCommand("page NoWifi");
     // safeSetPage("NoWifi");
+    block_chooseWifi();
+    creds = block_wifiLogin();
+    connected = creds.ok;
   }
 
   server.handleClient(); 
