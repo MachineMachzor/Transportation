@@ -31,25 +31,26 @@
 
 
 Preferences prefs;
-const bool TESTING_NEXTION = false;//If false, should be production nextion
+const bool TESTING_NEXTION = true;//If false, should be production nextion
 const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one, false for production
-const bool RESET_SAVED_WIFI = false; //Set to true to reset saved wifi credentials, this should be false in production
 
 // This is for the use case of if wifi just does not work randomly, but still want to develop code
 const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecting
 #define DEBUG_MINUTES false
 
 // Set all of these to false in production to not skip the code
-const bool SKIP_WIFI_SELECTION = true;
-const bool SKIP_WIFI_LOGIN = true;
-const bool SKIP_ADDR_CHOOSE = true;
-const bool SKIP_FIRST_BUS_SELECT = true;
-const bool SKIP_WALKTIME_SET = true;
-const bool SKIP_INFO_PAGE = true;
+const bool SKIP_WIFI_SELECTION = false;
+const bool SKIP_WIFI_LOGIN = false;
+const bool SKIP_ADDR_CHOOSE = false;
+const bool SKIP_FIRST_BUS_SELECT = false;
+const bool SKIP_WALKTIME_SET = false;
+const bool SKIP_INFO_PAGE = false;
 
 // Set all of these to false in production to not reset saved settings
 const bool RESET_SAVED_ADDRS = false;
 const bool RESET_SAVED_WALKTIME = false;
+const bool RESET_SAVED_WIFI = false; //Set to true to reset saved wifi credentials, this should be false in production
+
 
 
 
@@ -2181,7 +2182,19 @@ float newWalkTime(float oldWalkTime, float oldMiles, float newMiles) {
   if (oldMiles <= 0 || newMiles <= 0) {
     return WALKTIME_NONE; // invalid input
   }
-  float pace = oldWalkTime / oldMiles; // minutes per mile
+
+  // float pace = oldWalkTime / oldMiles; // minutes per mile
+  // If old data is invalid, use a default pace (20 min/mile)
+  const float DEFAULT_PACE = 20.0f;  
+
+  float pace;
+
+  if (oldMiles > 0 && oldWalkTime > 0) {
+      pace = oldWalkTime / oldMiles;  // minutes per mile
+  } else {
+      pace = DEFAULT_PACE;
+  }
+
   float newWalkTime = pace * newMiles;
   return newWalkTime;
 }
@@ -2728,7 +2741,7 @@ const TickType_t PASSIVE_INTERVAL = pdMS_TO_TICKS(1000); // run once per minute
 
 void nonBlockingInfoTask(void *pvParameters) {
   for (;;) {
-    if (!minute_changed_now()) {
+    if (!minute_changed_now() && timeOfRefresh.length() != 0) {
       vTaskDelay(PASSIVE_INTERVAL);
       continue;
     }
@@ -2779,7 +2792,7 @@ void nonBlockingInfoTask(void *pvParameters) {
       nextBusTimeStr = n[0].nextBusTime;
       String nextBusTimeStr_;
       formatTime12(nextBusTimeStr, nextBusTimeStr_);
-      localLeave += " (Next Bus: " + nextBusTimeStr_ + ")";
+      
       float walkDistNew = n[0].walkDistance.toFloat();
       // int diffTimeMin = minutesDifferenceFromEpochMs(comparisonTime, nextBusTimeStr.c_str());
       int diffTimeMin = minutesDifferenceHHMM(comparisonTime, nextBusTimeStr);
@@ -2796,6 +2809,7 @@ void nonBlockingInfoTask(void *pvParameters) {
       } else {
         localLeave = String(timeToLeave) + " min";
       }
+      localLeave += " (Next Bus: " + nextBusTimeStr_ + ")";
       updated = true;
       // reset reloadAttempt if you want; be careful if reloadAttempt is shared (protect it)
     } else {
@@ -2841,7 +2855,7 @@ void nonBlockingInfoTask(void *pvParameters) {
 
 void block_infoPage() {
   safeSetPage("InfoPage");
-  sendCommand("t9.txt=\"(Unchecked Tries " + bus + "\""); //Immediately specify saved bus
+  sendCommand("t9.txt=\"(Unchecked Tries " + bus + ")\""); //Immediately specify saved bus
 
   // Ideally call this without blocking
   // nonBlockingInfoCall();
@@ -3063,7 +3077,7 @@ void setup() {
   // origin_lon = "-79.998337";
   // dest_lat = "40.441891"; //Two PNC Plaza, Pittsburgh, PA 15222
   // dest_lon = "-80.000656";
-  std::vector<BoardingInfo> infos = httpGetDirections(origin_test_lat, origin_test_lon, dest_test_lat, dest_test_lon, true);
+  // std::vector<BoardingInfo> infos = httpGetDirections(origin_test_lat, origin_test_lon, dest_test_lat, dest_test_lon, true);
   // dbgSerial->println("-----");
   // getPlaces
 
@@ -3230,6 +3244,7 @@ void loop() {
       {
         /* code */
         connected = false;
+        creds.ok = false;
         WiFi.disconnect();
       }
       
