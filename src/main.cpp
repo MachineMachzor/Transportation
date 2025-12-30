@@ -32,7 +32,7 @@
 
 Preferences prefs;
 const bool TESTING_NEXTION = true;//If false, should be production nextion
-const bool FAKE_WIFI = true; //If true, just load in our test wifi credentials instead of selecting one, false for production
+const bool FAKE_WIFI = false; //If true, just load in our test wifi credentials instead of selecting one, false for production
 
 // This is for the use case of if wifi just does not work randomly, but still want to develop code
 const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecting
@@ -47,9 +47,9 @@ const bool SKIP_WALKTIME_SET = false;
 const bool SKIP_INFO_PAGE = false;
 
 // Set all of these to false in production to not reset saved settings
-const bool RESET_SAVED_ADDRS = false;
-const bool RESET_SAVED_WALKTIME = false;
-const bool RESET_SAVED_WIFI = false; //Set to true to reset saved wifi credentials, this should be false in production
+const bool RESET_SAVED_ADDRS = true;
+const bool RESET_SAVED_WALKTIME = true;
+const bool RESET_SAVED_WIFI = true; //Set to true to reset saved wifi credentials, this should be false in production
 
 
 
@@ -84,8 +84,11 @@ bool currentPageCall = false; //If true, called the page once
 // #include <HTTPClient.h>
 
 // For testing
-char* ssidTest     = "googRouter";
-char* passwordTest = "bimshire"; 
+// char* ssidTest     = "googRouter";
+// char* passwordTest = "bimshire"; 
+
+char* ssidTest     = "Pixel_4976";
+char* passwordTest = "testpassword"; 
 
 
 // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQTFXc01kOVVpS05GS3I5QlMtR0c0bkQlM0FDZ2NJQkNDU3Blb2pFQUVhQkRNeE1UYztsYXQ9NDAuODEzMzY7bG9uPS03My45NjAzMztuPTMxMTclMjBCcm9hZHdheSUyQyUyME5ldyUyMFlvcmslMkMlMjBOWSUyMDEwMDI3LTQ2MDklMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQVVNbHlLT1k3cUwyYXlFcUNQaGtXNEElM0FDZ2NJQkNET3lla2pFQUVhQkRJeU9EYztsYXQ9NDAuNzk3MTM7bG9uPS03My45MzQ4MTtuPTIyODclMjAxc3QlMjBBdmUlMkMlMjBOZXclMjBZb3JrJTJDJTIwTlklMjAxMDAzNS01MDU3JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==?map=40.80492,-73.94577,14.45
@@ -99,6 +102,8 @@ String dest_test_lon = "-73.93481";
 
 
 /*
+https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQS03c3lYUXpGcmtnUkMzclEtT083c0MlM0FDZ2NJQkNESGxxSWdFQUVhQXpRek5BO2xhdD00MC40NTQ1OTtsb249LTc5LjkyMjEzO249NDM0JTIwU2hhZHklMjBBdmUlMkMlMjBQaXR0c2J1cmdoJTJDJTIwUEElMjAxNTIwNi00NDU1JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQUoyMy5tSU1FVW43My5RbHJ1Qi1rRkMlM0FDZ2NJQkNDMDQ2Z2dFQUVhQXpZeU1BO2xhdD00MC40NDE4MTtsb249LTgwLjAwMDgzO249NjIwJTIwTGliZXJ0eSUyMEF2ZSUyQyUyMFBpdHRzYnVyZ2glMjAoUGl0dCklMkMlMjBQQSUyMDE1MjIyLTI3MDUlMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9?map=40.44865,-79.96139,13.63
+
 startAddr = "434 Shady Ave, Pittsburgh, PA 15206-4455, United States";
 endAddr = "620 Liberty Ave, Pittsburgh (Pitt), PA 15222-2705, United States";
 origin_lat = "40.454590"; //434 Shady Ave, Pittsburgh, PA 15206-4455, United States
@@ -732,7 +737,7 @@ std::vector<BoardingInfo> httpGetDirections(String origin_lat, String origin_lon
   } else {
     dbgSerial->printf("HTTP GET failed, code: %d, err: %s\n", httpCode, https.errorToString(httpCode).c_str());
   }
-  logMessage("Directions Response length: " + String(result.length()));
+  // logMessage("Directions Response length: " + String(result.length()));
 
   if (verbose) {
     dbgSerial->println("Full Directions Response:");
@@ -976,13 +981,16 @@ void debugHex(const String &s) {
 }
 
 
-bool tryWifi(const char* ssid, const char* pass, unsigned long timeout_ms = 20000) {
+bool tryWifi(const char* ssid, const char* pass, unsigned long timeout_ms = 30000) {
   WiFi.begin(ssid, pass);
   unsigned long start = millis();
+  sendCommand("errorTxt.pco="+PCO_COLORS.green); //Make it green before connecting
+  sendCommand("errorTxt.txt=\"Connecting...\"");
   while (millis() - start < timeout_ms) {
     if (WiFi.status() == WL_CONNECTED) {
       return true;
     }
+    
     // do small delay to yield CPU; keep it short so loop is responsive
     delay(200);
   }
@@ -1392,7 +1400,7 @@ buttonText WifiLogin() {
   username = getButtonText(*nextionSerial); // flush any prior response
   sendCommand("get t4.txt");
   password = getButtonText(*nextionSerial);
-
+  
   logMessage("Received wifi credentials from Nextion: SSID: " + username + ", Password: " + password);
   bool hasError = false;
   if (username.length() == 0) {
@@ -1406,16 +1414,16 @@ buttonText WifiLogin() {
   } 
 
   if (!hasError) {
-    sendCommand("errorTxt.pco="+PCO_COLORS.green); //Make it green before connecting
-    sendCommand("errorTxt.txt=\"Connecting...\"");
+    
     bool connected = tryWifi(username.c_str(), password.c_str());
-    sendCommand("errorTxt.pco="+PCO_COLORS.red);
-    sendCommand("errorTxt.txt=\"\""); //Empty it out
+    
+    
     creds.ok = connected;
     creds.ssid = username;
     creds.pass = password;
     if (!creds.ok) {
       logMessage("Failed to connect to wifi with provided credentials.");
+      sendCommand("errorTxt.pco="+PCO_COLORS.red);
       sendCommand("errorTxt.txt=\""+login_errors_const.bad_login + "\"");
     } else {
       logMessage("Connected to wifi successfully!");
@@ -2298,6 +2306,10 @@ int chooseWalkTime() {
     if (goodWalkTime) {
       int compId = waitForButtonPress(*nextionSerial, 100);
       if (compId == 4) {
+        if (walkTime == WALKTIME_NONE) {
+          // walkTime = 0; // interpret empty as 0
+          walkTime = newWalkTime(walkTime, milesComputeSaved, milesComputeSaved); // should be 0
+        }
         String forLog = "Chosen WalkTime: " + String(walkTime) + " min";
         logMessage(forLog);
         // sendCommand("t5.txt=\"" + forLog + "\"");
@@ -2560,6 +2572,8 @@ WifiCredentials block_wifiLogin() {
       creds.ok = wl.connected;
     }
 
+
+
     username = wl.ssid;
     password = wl.pass;
     creds.ok = wl.connected;
@@ -2684,20 +2698,23 @@ void block_walkTimeBus() {
       }
       safeSetPage("Walk");
 
-      float walkTimeFound = chooseWalkTime();
+      // float walkTimeFound = chooseWalkTime();
+      walkTime = chooseWalkTime();
 
-      logMessage("User specified walk time: " + String(walkTimeFound) + " min " + "(was " + String(walkTime) + " min)");
-      String equalityCheck = (walkTimeFound == walkTime) ? "true" : "false";
-      // logMessage("User specified walk time equals prior walk time? " + equalityCheck);
+      // logMessage("User specified walk time: " + String(walkTimeFound) + " min " + "(was " + String(walkTime) + " min)");
+      logMessage("User specified walk time: " + String(walkTime) + " min.");
+      // String equalityCheck = (walkTimeFound == walkTime) ? "true" : "false";
+      // // logMessage("User specified walk time equals prior walk time? " + equalityCheck);
 
-      if (int(walkTimeFound) == int(WALKTIME_NONE)) {
-        // walkTimeFound = WALKTIME_DEFAULT; //We specified none prior
-        walkTimeFound = walkTime; //Use prior loaded walktime
-      }
+      // if (int(walkTimeFound) == int(WALKTIME_NONE)) {
+      //   // walkTimeFound = WALKTIME_DEFAULT; //We specified none prior
+      //   walkTimeFound = walkTime; //Use prior loaded walktime
+      // }
+      // walkTime = walkTimeFound;
       
 
-      logMessage("Final Walk Time chosen: " + String(walkTimeFound) + " min");
-      saveSetting(CONST_KEYS.walkTime.c_str(), String(walkTimeFound).c_str());
+      logMessage("Final Walk Time chosen: " + String(walkTime) + " min");
+      saveSetting(CONST_KEYS.walkTime.c_str(), String(walkTime).c_str());
       saveSetting(CONST_KEYS.milesCompute.c_str(), String(milesComputeSaved).c_str());
       saveSetting(CONST_KEYS.bus.c_str(), bus.c_str());
       safeSetPage("InfoPage");
@@ -2797,8 +2814,27 @@ void nonBlockingInfoTask(void *pvParameters) {
     }
 
     if ((minute_changed_now() || timeOfRefresh.length() == 0) == false) {
+      String uiLeave, uiBus, uiLocation, uiRefresh;
+      if (pageTracker == "InfoPage" && timeOfRefresh != "Time not set") {
+        if (xSemaphoreTake(gInfoMutex, pdMS_TO_TICKS(50))) {
+          uiLeave = leaveMsg;
+          uiBus = busUsed;
+          uiLocation = firstLocation;
+          uiRefresh = timeOfRefresh;
+          xSemaphoreGive(gInfoMutex);
+
+          
+          sendCommand("t2.txt=\"" + uiLeave + "\"");
+          sendCommand("t4.txt=\"" + uiBus + "\"");
+          sendCommand("t7.txt=\"" + uiLocation + "\"");
+          sendCommand("t10=\"" + uiRefresh + "\"");
+          sendCommand("c0Unique.val="+firstBusOnlySaved); //Reload saved setting on this page
+        } 
+      }
+      
       vTaskDelay(PASSIVE_INTERVAL);
       continue;
+
     }
     // Snapshot inputs under mutex (short hold)
     String s_origin_lat, s_origin_lon, s_dest_lat, s_dest_lon;
@@ -3046,16 +3082,19 @@ void setup() {
 
 
   // example: RX=16, TX=17
-  Serial1.begin(NEXTION_BAUD, SERIAL_8N1, 16, 17); // ESP32 hardware UART
+  // 
+  
   // send a Nextion command (must end with 0xFF 0xFF 0xFF)
   // Serial1.print("t0.txt=\"Hello\"\xFF\xFF\xFF");
 
   if (TESTING_NEXTION) {
+    Serial1.begin(NEXTION_BAUD, SERIAL_8N1, 16, 17); // ESP32 hardware UART
     // Editor on PC listens to USB serial, so send Nextion commands to Serial.
     nextionSerial = &Serial;
     // keep debug off the USB to avoid polluting the Editor; send debug to Serial1 (not connected)
     dbgSerial = &Serial1;
   } else {
+    Serial1.begin(9600, SERIAL_8N1, 3, 1);   //// RX = 3, TX = 1
     // production: Nextion is on Serial1 pins, debug goes to USB Serial
     nextionSerial = &Serial1;
     dbgSerial = &Serial;
@@ -3404,8 +3443,10 @@ void loop() {
     // logMessage("Wi-Fi not connected");
     // sendCommand("page NoWifi");
     // safeSetPage("NoWifi");
+    sendCommand("errorTxt.txt=\"\""); //Empty it out
     block_chooseWifi();
     creds = block_wifiLogin();
+    
     connected = creds.ok;
   }
 
@@ -3433,79 +3474,16 @@ Is this all possible?
 
 
 /*
-Notes on internally what query means
-**Short answer:** The two URLs differ only in opaque, internal Google UI parameters — the trailing `i759` vs `i760` is an internal index/token used by Google’s encoded `pb` payload (not a stable API field). The long `authuser=…&hl=…&gl=…&psi=…` sequence are standard query flags (account, language, country) plus a client/session token; the `pb` value itself is a compact, protobuf‑style blob that encodes many UI and pagination details.
 
-### What `i759` / `i760` likely means
-- **Not a semantic place ID**: `i759` and `i760` are part of Google’s *internal* request encoding and are not documented public parameters. They typically act as **small incremental tokens or indices** inside the `pb`/encoded payload that help the Maps UI track which page/view or image index is being requested.  
-- **Why they differ by 1**: when you change the query (for example from `Tw` to `Two+PNC+Plaza`) the UI generates a slightly different `pb` payload; one of the internal counters or indices increments, producing `i759` → `i760`. This is an implementation detail of Google’s client, not a stable API behavior.
+NEXTION WIRING
 
-### What the `pb` parameter is
-- **`pb` is a compact, encoded payload** used by Google Maps web endpoints. It’s effectively a serialized, Closure‑compiled/protobuf‑style blob that encodes view state, pagination, zoom, result windows, and other UI parameters. People who reverse‑engineer Maps call it a protobuf‑like parameter and decode it with custom tools; it’s not meant for public consumption.
-
-### Meaning of `authuser`, `hl`, `gl`, `psi`
-- **`authuser=0`** — selects which signed‑in Google account to use (account index 0 is the primary account in the browser session).  
-- **`hl=en`** — sets the **language/locale** for the response (here English).  
-- **`gl=us`** — sets the **geographic/country context** (here United States), which can affect ranking and localized results.  
-- **`psi=...`** — a client/instance token (a short client/session identifier generated by the browser/JS) used by Google to correlate requests and client state; it’s not a documented API parameter and is part of the UI telemetry/coordination mechanism.
-
-### Practical implications
-- **Don’t rely on these parameters** for scraping or production logic — they are fragile and can change any time. Use the official **Maps URLs** or the **Places / Maps APIs** for stable programmatic access instead.  
-- If you must parse `pb`, use existing decoders (community projects exist) and treat results as brittle; decoding requires reverse‑engineering and may break when Google changes the client encoding.
-
-### Sources
-- `pb` decoding and embedded Maps parameter discussion (community/StackOverflow).  
-- Community protobuf decoders and tools for Google Maps `pb` blobs.  
-- Official Maps URLs docs explaining `hl`, `gl`, and general URL usage (recommended stable approach).  
-- Reverse‑engineering writeups on Maps pagination and client tokens (how `pb`/psi relate to pagination).
+Nextion | ESP32-Cam
+GND    | GND
+5V     | 5V
+TX     | RX (GPIO3)
+RX     | TX (GPIO1)
 
 
-
-Notes on seeing how a particular element gets populated:
-**Exploring network requests in Chrome DevTools**
-
-I need to mention using "Copy as cURL" to replay requests. For Google Maps, many requests are encoded in the pb param, and some content is generated client-side from these payloads. I’ll also suggest using the "Pretty print" and "Response" tabs to inspect JSON. To map an element to a network request, I can right-click the element and use "Reveal in Elements panel" or "Inspect." I’ll also explain how to use breakpoints and the "Initiator" column to track requests. I’ll make sure to include step-by-step instructions for Chrome DevTools.
-**Yes. Use DevTools to pause DOM changes and inspect the network requests that ran just before the element was created — set a DOM breakpoint on that element, then check the Network panel and the Call Stack to find the exact XHR/fetch that produced its data.**  
-
-### Quick steps to capture the request that created a DOM node
-1. **Open DevTools** → Elements panel and locate the `<div class="m6QErb XiKgde">` node.  
-2. **Right‑click the node** → Break on → **Subtree modifications**. This causes the debugger to pause when scripts add/remove children under that node.  
-3. **Trigger the UI action** that populates the element (type, click, or reload). When the DOM changes, DevTools will pause in the Sources panel and show the **call stack** that performed the modification.  
-4. **Inspect the call stack** to find the JS function that appended children. Expand frames to see the script and line; that frame often shows the code that handled the network response.  
-5. **Switch to the Network panel** (keep DevTools open and enable Preserve log). Look for XHR/fetch requests that completed just before the paused time; use the **Initiator** column to correlate which script started each request and the timing.  
-6. **Open the candidate request** → Headers and Response to inspect the payload that produced the element. Use Copy as cURL or Copy as fetch to replay the request if needed.
-
-### Alternative and complementary techniques
-- **XHR/fetch breakpoints** in Sources → Breakpoints → XHR/fetch. This pauses when any XHR or fetch resolves, letting you inspect the response and call stack immediately.  
-- **Event Listener Breakpoints** → DOM Mutation → subtree modifications to pause on broader mutation events if you can’t find the exact node.  
-- **Filter Network by XHR** and sort by Time or use the Waterfall to find requests that finished right before the DOM change; expand a request to see its initiator chain for exact origin.  
-- **Use the Console**: after the element exists, run `$0` (selected element) to inspect it, then check `getEventListeners($0)` or walk up to find attached handlers that may reference the request logic.
-
-### Practical tips to make this reliable
-- **Enable Preserve log** in Network so requests aren’t cleared on navigation.  
-- **Disable cache** while debugging to avoid cached responses.  
-- **Narrow the Network list** by filtering domain or resource type (XHR/fetch).  
-- If the page uses websockets or streaming, check the **WS** entries or the streaming response in the request’s response tab.  
-- If the site obfuscates requests (protobuf/`pb` blobs), inspect the raw response and the JS code in the paused frame to see how it decodes the payload.
-
-### References
-- Chrome DevTools Network panel documentation for inspecting requests and responses.  
-- How to set DOM breakpoints in Chrome DevTools to pause on subtree modifications.  
-- Understanding request initiator chains to correlate network requests with the code that started them.
-
-
-
-
-Query on directions
-
-https://www.google.com/maps/preview/directions?authuser=0&hl=en&gl=us&pb=!1m7!1s434+Shady+Avenue%2C+Pittsburgh%2C+PA!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1s400+East+Waterfront+Drive%2C+Homestead%2C+PA+15120!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184
-
-This is the normal URL to analyze in comparison to find the nested patterns:
-https://www.google.com/maps/dir/434+Shady+Avenue,+Pittsburgh,+PA/400+East+Waterfront+Drive,+Homestead,+PA+15120/@40.4318528,-79.9255915,12z/data=!4m14!4m13!1m5!1m1!1s0x8834f20bad463bcb:0x4104e286b57ee3d5!2m2!1d-79.9221308!2d40.4546065!1m5!1m1!1s0x8834ee236ec7350f:0x73fa84093902b486!2m2!1d-79.9099369!2d40.4120663!3e3?entry=ttu&g_ep=EgoyMDI1MTEyMy4xIKXMDSoASAFQAw%3D%3D
-
-
-
-"$(ruby -e 'print Gem.bindir')/google_maps_pb_decoder" '!1m7!1s434+Fifth+Avenue%2C+Pittsburgh%2C+PA!2s0x8834f20bad463bcb%3A0x4104e286b57ee3d5!3m2!3d40.4546065!4d-79.92213079999999!6e0!19sChIJyztGrQvyNIgR1eN-tYbiBEE!1m5!1sTwo+PNC+Plaza%2C+Liberty+Avenue%2C+Pittsburgh%2C+PA!2s0x8834ee236ec7350f%3A0x73fa84093902b486!3m2!3d40.4120663!4d-79.90993689999999!3m15!1m3!1d3652.469221595039!2d-79.92302947339881!3d40.45715232143318!2m3!1f0!2f0!3f0!3m2!1i413!2i924!4f13.1!6m2!1f0!2f0!6m48!1m5!18b1!30b1!31m1!1b1!34e1!2m4!5m1!6e2!20e3!39b1!6m18!49b1!66b1!74i150000!85b1!91b1!114b1!149b1!178b1!206b1!212b1!213b1!223b1!227b1!232b1!233b1!244b1!246b1!250b1!10b1!12b1!13b1!14b1!16b1!17m2!3e1!3e1!20m5!1e3!2e3!5e2!6b1!14b1!46m1!1b0!96b1!99b1!15m4!1s4comaYyYFdie5NoP6PLzmAQ!4m1!2i10147!7e81!20m0!27b1!28m0!40i760!47m2!8b1!10e2!50sAMAbHIJ9Z-8tJDm9cAYXtpsZjRf8BsO2uA%3A1764149883184'
 
 */
 
