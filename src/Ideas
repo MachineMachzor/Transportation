@@ -1,0 +1,6 @@
+1. Collect inputs for time of day, day of week, clean up, building travel time (could make it battery powered and use gps, or just use phone)
+2. Maybe the API call has how full the bus is.
+
+Now, create a RANGE (2m-7m) and incorporate this over your walktime estimation. Also, it could take inputs and use a linear regression model as well (day of week) to maybe fill in intermediate unknowns. Also a gaussian estimation in general (knowing values)
+
+There could be another screen with a table that utilizes each specific goal (ex: Fastest time to get there, another one for a reasonably un-filled bus, etc), could be like first 3 buses.

@@ -26,12 +26,8 @@
 #include "freertos/semphr.h"
 
 
-
-
-
-
 Preferences prefs;
-const bool TESTING_NEXTION = true;//If false, should be production nextion
+const bool TESTING_NEXTION = false;//If false, should be production nextion
 const bool FAKE_WIFI = false; //If true, just load in our test wifi credentials instead of selecting one, false for production
 
 // This is for the use case of if wifi just does not work randomly, but still want to develop code
@@ -47,10 +43,9 @@ const bool SKIP_WALKTIME_SET = false;
 const bool SKIP_INFO_PAGE = false;
 
 // Set all of these to false in production to not reset saved settings
-const bool RESET_SAVED_ADDRS = true;
-const bool RESET_SAVED_WALKTIME = true;
-const bool RESET_SAVED_WIFI = true; //Set to true to reset saved wifi credentials, this should be false in production
-
+const bool RESET_SAVED_ADDRS = false;
+const bool RESET_SAVED_WALKTIME = false;
+const bool RESET_SAVED_WIFI = false; //Set to true to reset saved wifi credentials, this should be false in production
 
 
 
@@ -87,8 +82,12 @@ bool currentPageCall = false; //If true, called the page once
 // char* ssidTest     = "googRouter";
 // char* passwordTest = "bimshire"; 
 
-char* ssidTest     = "Pixel_4976";
+char* ssidTest     = "Pixel4976";
 char* passwordTest = "testpassword"; 
+
+
+// char* ssidTest     = "ARRIS-FDF1";
+// char* passwordTest = "3G5344102028"; 
 
 
 // https://wego.here.com/r/publicTransport/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQTFXc01kOVVpS05GS3I5QlMtR0c0bkQlM0FDZ2NJQkNDU3Blb2pFQUVhQkRNeE1UYztsYXQ9NDAuODEzMzY7bG9uPS03My45NjAzMztuPTMxMTclMjBCcm9hZHdheSUyQyUyME5ldyUyMFlvcmslMkMlMjBOWSUyMDEwMDI3LTQ2MDklMkMlMjBVbml0ZWQlMjBTdGF0ZXM7cGg9/s-Yz07aWQ9aGVyZSUzQWFmJTNBc3RyZWV0c2VjdGlvbiUzQVVNbHlLT1k3cUwyYXlFcUNQaGtXNEElM0FDZ2NJQkNET3lla2pFQUVhQkRJeU9EYztsYXQ9NDAuNzk3MTM7bG9uPS03My45MzQ4MTtuPTIyODclMjAxc3QlMjBBdmUlMkMlMjBOZXclMjBZb3JrJTJDJTIwTlklMjAxMDAzNS01MDU3JTJDJTIwVW5pdGVkJTIwU3RhdGVzO3BoPQ==?map=40.80492,-73.94577,14.45
@@ -98,6 +97,27 @@ String origin_test_lat = "40.81336"; //434 Shady Ave, Pittsburgh, PA 15206-4455,
 String origin_test_lon = "-73.96033";
 String dest_test_lat = "40.79713"; //Two PNC Plaza
 String dest_test_lon = "-73.93481";
+
+
+
+String get_api_key() {
+  HTTPClient http;
+  http.begin("http://10.45.148.80:5000/get_api_key");  
+  int code = http.GET();
+  if (code != HTTP_CODE_OK) {
+    http.end();
+    return "";       // on comms error, treat as clear
+  }
+
+  String body = http.getString();
+  http.end();
+
+  return body;
+}
+
+String CONST_API_KEY = ""; //"5fZ0G89n72R6riz5dyqHHwTINvkFil-_v3EkrmihFyg";
+
+
 
 
 
@@ -689,7 +709,7 @@ size_t parseAllAddresses(const String &jsonPart, std::vector<placeIdentifier> &o
 
 
 
-std::vector<BoardingInfo> httpGetDirections(String origin_lat, String origin_lon, String dest_lat, String dest_lon, bool verbose=false, String apiKey = "t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU") {
+std::vector<BoardingInfo> httpGetDirections(String origin_lat, String origin_lon, String dest_lat, String dest_lon, bool verbose=false, String apiKey = CONST_API_KEY) {
   WiFiClientSecure *client = new WiFiClientSecure();
   client->setInsecure(); // for testing only
   HTTPClient https;
@@ -2150,7 +2170,7 @@ String setPbCenter(String url, double newLat, double newLon) {
 
 
 
-std::vector<placeIdentifier> getPlaces(String searchQuery, Place places[], int maxPlaces, double newLat, double newLong, bool verbose=false, String apiKey="t8O_G9BE_xgA_oPNGdUOXmxdRrQjbCqOr7YsXIywQsU") {
+std::vector<placeIdentifier> getPlaces(String searchQuery, Place places[], int maxPlaces, double newLat, double newLong, bool verbose=false, String apiKey=CONST_API_KEY) {
   // searchQuery.replace(" ", "+");
   searchQuery.replace(" ", "%20");
   searchQuery.replace(",", "%2C");
@@ -3153,6 +3173,8 @@ void setup() {
     saveSetting(CONST_KEYS.firstBusOnly.c_str(), firstBusOnlySaved.c_str());
   }
 
+  
+
   creds.ssid = loadStringSetting(CONST_KEYS.ssid.c_str());
   creds.pass = loadStringSetting(CONST_KEYS.pass.c_str());
   startAddr = loadStringSetting(CONST_KEYS.startAddr.c_str());
@@ -3166,7 +3188,7 @@ void setup() {
   dest_lat = loadStringSetting(CONST_KEYS.dest_lat.c_str());
   dest_lon = loadStringSetting(CONST_KEYS.dest_lon.c_str());
 
-
+  
   logMessage("Loaded walkTime : " + String(walkTime) + ", milesComputeSaved: " + String(milesComputeSaved) + ", bus: " + bus + ", firstBusOnlySaved: " + firstBusOnlySaved);
   logMessage("Walktime equals WALKTIME_NONE? " + String(walkTime == WALKTIME_NONE ? "true" : "false"));
   logMessage("Loaded Start Addr: " + startAddr + ", End Addr: " + endAddr);
@@ -3188,6 +3210,9 @@ void setup() {
     }
     
   }
+
+
+  
 
   
 
@@ -3287,6 +3312,9 @@ void loop() {
   if ((creds.ok || OVERRIDE_WIFI)) {
     
     if (initializeOnce && creds.ok) {
+      if (CONST_API_KEY.length() == 0) {
+        CONST_API_KEY = get_api_key();
+      }
       String msgLog = OVERRIDE_WIFI ? "OVERRIDE_WIFI set, starting setup sequence" : "WiFi connected successfully, starting setup sequence";
       logMessage(msgLog);
       c = getCurrentLocation();
@@ -3471,6 +3499,7 @@ Is this all possible?
 // cd C:\Users\ringk\OneDrive\Documents\PlatformIO\Projects\Transportation_IO
 // pio device monitor -p COM4 -b 115200 --filter esp32_exception_decoder
 // pio device monitor -p COM3 -b 115200 --filter esp32_exception_decoder
+// pio device monitor -p COM6 -b 115200 --filter esp32_exception_decoder
 
 
 /*
