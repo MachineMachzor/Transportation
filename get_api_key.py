@@ -8,6 +8,34 @@ from flask import Flask, send_file, jsonify
 
 from playwright.sync_api import sync_playwright
 
+import socket
+from zeroconf import ServiceInfo, Zeroconf
+
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    finally:
+        s.close()
+
+ip = get_local_ip()
+sever_info = "apikeyserver.local."
+zeroconf = Zeroconf()
+info = ServiceInfo(
+    "_http._tcp.local.",
+    "apikeyserver._http._tcp.local.",
+    addresses=[socket.inet_aton(ip)],
+    port=5000,
+    properties={},
+    server=sever_info
+)
+zeroconf.register_service(info)
+
+print(ip)
+
+
+
 
 
 app = Flask(__name__)
@@ -18,6 +46,7 @@ app = Flask(__name__)
 # https://github.com/IDEA-Research/GroundingDINO
 baseHost = "192.168.0.84" #Internet
 baseHost = "10.45.148.80" #Phone
+baseHost = "172.23.80.1"
 
 
 save_api_key_loc = r"C:\Users\ringk\OneDrive\Documents\PlatformIO\Projects\Transportation_IO\apiKey.txt"
@@ -57,7 +86,6 @@ def api_key_refresh():
         browser.close()
     return "OK"
     
-
 @app.route('/get_api_key', methods=['GET'])
 def api_key_get():
     with open(save_api_key_loc, 'r') as f:
@@ -65,8 +93,30 @@ def api_key_get():
         return api_key
     return ''
 
-
-
-
 if __name__ == '__main__':
-    app.run(host=baseHost, port=5000) #threaded=True, use_reloader=False
+    print("http://apikeyserver.local:5000/get_api_key")
+    print("http://apikeyserver.local:5000/refresh")
+    app.run(host="0.0.0.0", port=5000) #threaded=True, use_reloader=False
+    
+
+
+"""
+
+Making IP constant
+
+Connect to phone hotspot, type 'ipconfig' in cmd, find "Wireless LAN adapter Wi-Fi:" (second to last)
+Your hotspot subnet is 10.220.160.x and the phone's gateway is 10.220.160.78. Use 10.220.160.50 as your fixed PC address.
+
+Steps:
+
+1. Settings → Network & Internet → WiFi
+2. Click the "i" / Properties next to your hotspot network name
+3. Under IP settings click Edit
+4. Switch from Automatic (DHCP) to Manual
+5. Toggle IPv4 on and enter:
+    6. IP address: 10.220.160.50
+    7. Subnet mask: 255.255.255.0
+    8. Gateway: 10.220.160.78
+    9. Preferred DNS: 8.8.8.8
+Save
+"""

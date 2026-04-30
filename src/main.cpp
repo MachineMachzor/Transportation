@@ -24,6 +24,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include <ESPmDNS.h>
+
+// After WiFi connects:
+// MDNS.begin("esp32"); // optional, just enables mDNS stack
+
+
 
 
 Preferences prefs;
@@ -31,7 +37,7 @@ const bool TESTING_NEXTION = false;//If false, should be production nextion
 const bool FAKE_WIFI = false; //If true, just load in our test wifi credentials instead of selecting one, false for production
 
 // This is for the use case of if wifi just does not work randomly, but still want to develop code
-const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connecting
+const bool OVERRIDE_WIFI = false; //Last resort, usually wifi should be connectffing
 #define DEBUG_MINUTES false
 
 // Set all of these to false in production to not skip the code
@@ -49,6 +55,11 @@ const bool RESET_SAVED_WIFI = false; //Set to true to reset saved wifi credentia
 
 
 
+const int LED_PIN     = 4;
+const int LED_CHANNEL = 0;
+const int LED_FREQ    = 5000;   // 5 kHz
+const int LED_RES     = 8;      // 8-bit → 0…255 steps
+#define DUTY_BIT_DEPTH 12 // max for ESP32-C3 is 14
 
 /*
 // FULL TESTING OF NEXTION
@@ -99,12 +110,33 @@ String dest_test_lat = "40.79713"; //Two PNC Plaza
 String dest_test_lon = "-73.93481";
 
 
+String logBuffer = "";
+static std::vector<String> logLines;  
+static int holdMessageCount = 100; //8;  // holds up to N messages
+
+void logMessage(const String& msg) {
+  logBuffer = "";
+  logLines.push_back(msg);
+  if (logLines.size() > holdMessageCount) {
+    logLines.erase(logLines.begin());
+  }
+
+  // logBuffer += msg + "\n";
+  for (auto &line : logLines) {
+    logBuffer += line + "\n";
+  }
+
+  dbgSerial->println(msg);
+  if (logBuffer.length() > 1024) logBuffer = logBuffer.substring(512);  // keep it trimmed
+}
+
 
 String get_api_key() {
   HTTPClient http;
-  http.begin("http://10.45.148.80:5000/get_api_key");  
+  http.begin("http://10.220.160.50:5000/get_api_key");  // static IP set on PC hotspot adapter
   int code = http.GET();
   if (code != HTTP_CODE_OK) {
+    logMessage("get_api_key failed, code: " + String(code) + ", err: " + http.errorToString(code));
     http.end();
     return "";       // on comms error, treat as clear
   }
@@ -370,26 +402,6 @@ String loadStringSetting(const char* key, const char* defaultVal = "") {
   String v = prefs.getString(key, defaultVal);
   prefs.end();
   return v;
-}
-
-String logBuffer = "";
-static std::vector<String> logLines;  
-static int holdMessageCount = 100; //8;  // holds up to N messages
-
-void logMessage(const String& msg) {
-  logBuffer = "";
-  logLines.push_back(msg);
-  if (logLines.size() > holdMessageCount) {
-    logLines.erase(logLines.begin());
-  }
-
-  // logBuffer += msg + "\n";
-  for (auto &line : logLines) {
-    logBuffer += line + "\n";
-  }
-
-  dbgSerial->println(msg);
-  if (logBuffer.length() > 1024) logBuffer = logBuffer.substring(512);  // keep it trimmed
 }
 
 
@@ -1008,6 +1020,7 @@ bool tryWifi(const char* ssid, const char* pass, unsigned long timeout_ms = 3000
   sendCommand("errorTxt.txt=\"Connecting...\"");
   while (millis() - start < timeout_ms) {
     if (WiFi.status() == WL_CONNECTED) {
+      MDNS.begin("esp32");
       return true;
     }
     
@@ -2878,12 +2891,14 @@ void nonBlockingInfoTask(void *pvParameters) {
     if (s_origin_lat.length() == 0 || s_origin_lon.length() == 0 ||
         s_dest_lat.length() == 0   || s_dest_lon.length() == 0 ||
         s_walkTime == WALKTIME_NONE || s_miles == WALKTIME_NONE || !creds.ok) {
+      logMessage("Missing data, cannot fetch directions. origin_lat: " + s_origin_lat + ", origin_lon: " + s_origin_lon + ", dest_lat: " + s_dest_lat + ", dest_lon: " + s_dest_lon + ", walkTime: " + String(s_walkTime) + ", miles: " + String(s_miles) + ", creds.ok: " + String(creds.ok));
       vTaskDelay(PASSIVE_INTERVAL);
       continue;
     }
 
     // Do the network/compute work using local copies (this may block, but only this task)
     std::vector<BoardingInfo> n = httpGetDirections(s_origin_lat, s_origin_lon, s_dest_lat, s_dest_lon);
+    logMessage("Directions fetched, count: " + String(n.size()));
 
     // compute local results
     String localLeave = "N/A";
@@ -3087,6 +3102,12 @@ void startNonBlockingInfoTask()
   }
 }
 
+void setLamp(uint8_t lampVal) {
+  // assume PWM LED, set lamp brightness using PWM (0 = off, 15 = max)
+  uint8_t valueMax = 15;
+  uint32_t duty = (pow(2, DUTY_BIT_DEPTH) / valueMax) * min(lampVal, valueMax);
+  ledcWrite(0, duty);
+}
 
 bool connected = false;
 
@@ -3094,6 +3115,8 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(USB_BAUD);
   // Serial.println("hello");
+  ledcSetup(0, 5000, DUTY_BIT_DEPTH);  // channel 0, 5000hz, bit depth
+  ledcAttachPin(LED_PIN, 0);            // pin, channel
 
  
 
@@ -3202,6 +3225,7 @@ void setup() {
       logMessage("Prior SSID, try to connect to wifi, SSID: " + creds.ssid + ", PASS: " + creds.pass);
       // connectionSequence(true);
       connected = tryWifi(creds.ssid.c_str(), creds.pass.c_str());
+      // Serial.println("WiFi status: " + String(connected) + " IP: " + WiFi.localIP().toString());
       creds.ok = connected;
       String tmpOk = creds.ok ? "true" : "false";
       logMessage("Actually successfully connected: " + tmpOk);
@@ -3262,8 +3286,16 @@ void setup() {
   server.on("/",         HTTP_GET, handleIndex);
   server.on("/logs", HTTP_GET, handleLogs);
   server.begin();
-  dbgSerial->printf("Connected MAIN SERVER, IP = %s\n", WiFi.localIP().toString().c_str());
+  String server_print = "HTTP server started at IP: " + WiFi.localIP().toString();
+  Serial.println(server_print);
+  logMessage(server_print);
+  
+  // dbgSerial->printf("Connected MAIN SERVER, IP = %s\n", WiFi.localIP().toString().c_str());
   logMessage("HTTP server running, ready for commands.");
+
+  setLamp(1);
+  delay(500);
+  setLamp(0);
 }
 
 
@@ -3322,14 +3354,12 @@ void loop() {
       const char* posix = iana_to_posix(userTimezone.c_str());
       logMessage("User timezone: " + userTimezone + ", POSIX: " + String(posix));
       logMessage("User lat: " + String(c.lat) + ", lon: " + String(c.lon));
-      // configTzTime("EST5EDT,M3.2.0/2,M11.1.0/2", "pool.ntp.org");
-      // configTzTime(posix, "pool.ntp.org");
+
       initTimeOnce(posix);
 
-      // configTime(0, 0, "pool.ntp.org", "time.nist.gov"); // sync UTC
-      // setenv("TZ", "PST8PDT", 1); // or "EST5EDT" or a full TZ string
-      // tzset();
+      logMessage("Started non-blocking task");
       startNonBlockingInfoTask();
+      logMessage("Ended non-blocking task");
       initializeOnce = false;
     }
 
@@ -3477,6 +3507,8 @@ void loop() {
     
     connected = creds.ok;
   }
+
+
 
   server.handleClient(); 
   // dbgSerial->println(seconds_until_next_minute());
